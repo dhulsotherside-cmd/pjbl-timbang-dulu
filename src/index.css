@@ -1,0 +1,22 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Manrope:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  /* Palet Warna Earthbound */
+  --color-forest-canopy: #263D32;
+  --color-sage-field: #71816B;
+  --color-pale-sage: #D8DDCE;
+  --color-warm-limestone: #F4F1E8;
+  --color-raw-earth: #B29B7D;
+  --color-terracotta: #A9664C;
+  --color-deep-charcoal: #30332F;
+
+  /* Typography */
+  --font-sans: 'Manrope', sans-serif;
+  --font-serif: 'DM Serif Display', serif;
+}
+
+/* Base style untuk seluruh halaman */
+body {
+  @apply bg-warm-limestone text-deep-charcoal font-sans antialiased;
+}
