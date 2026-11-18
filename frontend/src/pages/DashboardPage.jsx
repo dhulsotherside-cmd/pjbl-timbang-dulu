@@ -1,179 +1,343 @@
-// Lokasi: src/pages/DashboardPage.jsx
-import React from 'react';
-import { Link } from 'react-router-dom';
-import { Card, CardBody } from '../components/Card';
-import Button from '../components/Button';
-import { Camera, PlusCircle, Activity, Box, Clock, CalendarDays, TrendingUp } from 'lucide-react';
-import { useSapi } from '../context/SapiContext';
 
-export default function DashboardPage() {
-  const { dataSapi } = useSapi();
+import {
+  ArrowUpRight,
+  Beef,
+  Scale,
+  Activity,
+  CalendarDays,
+  ArrowRight,
+} from 'lucide-react'
 
-  // Hitung metrik dinamis
-  const totalSapi = dataSapi.length;
-  const totalPengukuran = dataSapi.reduce((total, sapi) => total + sapi.riwayat.length, 0);
-  
-  // Ambil maksimal 4 sapi terbaru
-  const sapiTerbaru = [...dataSapi].slice(0, 4);
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+} from 'recharts'
 
-  // Menggabungkan semua riwayat pengukuran, mengurutkan dari yang terbaru, dan ambil 5 teratas
-  const pengukuranTerbaru = dataSapi.flatMap(sapi => 
-    sapi.riwayat.map(r => ({
-      ...r,
-      namaSapi: sapi.nama,
-      idSapi: sapi.id
-    }))
-  )
-  .sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal))
-  .slice(0, 5);
+import {
+  getActiveCattle,
+  getAllMeasurements,
+  getDashboardStats,
+} from '../mocks/cattleData'
 
-  // Format tanggal hari ini secara dinamis
-  const tanggalHariIni = new Date().toLocaleDateString('id-ID', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
+import styles from './DashboardPage.module.css'
+
+const monthNames = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+  'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des',
+]
+
+function formatDate(date) {
+  if (!date) return 'Tanggal tidak tersedia'
+
+  const parsedDate = new Date(date)
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return 'Tanggal tidak tersedia'
+  }
+
+  return parsedDate.toLocaleDateString('id-ID', {
     day: 'numeric',
-  });
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+function DashboardPage() {
+  const activeCattle = getActiveCattle()
+  const measurements = getAllMeasurements()
+  const stats = getDashboardStats()
+
+  const activeCattleIds = new Set(activeCattle.map((cow) => cow.id))
+
+  // Komposisi gender sapi aktif
+  const maleCount = activeCattle.filter(
+    (cow) => cow.gender === 'Jantan'
+  ).length
+
+  const femaleCount = activeCattle.filter(
+    (cow) => cow.gender === 'Betina'
+  ).length
+
+  const totalGender = maleCount + femaleCount
+  const malePercentage = totalGender
+    ? (maleCount / totalGender) * 100
+    : 0
+
+  // Tren rata-rata bobot bulanan dari sapi aktif
+  const monthlyData = {}
+
+  measurements
+    .filter((item) => activeCattleIds.has(item.cattleId))
+    .forEach((item) => {
+      const monthKey = item.date.slice(0, 7)
+
+      if (!monthlyData[monthKey]) {
+        monthlyData[monthKey] = {
+          total: 0,
+          count: 0,
+        }
+      }
+
+      monthlyData[monthKey].total += item.weight
+      monthlyData[monthKey].count += 1
+    })
+
+  const weightData = Object.entries(monthlyData)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, data]) => {
+      const monthIndex = Number(month.slice(5, 7)) - 1
+
+      return {
+        month: monthNames[monthIndex],
+        weight: Math.round(data.total / data.count),
+      }
+    })
+
+  const latestWeight = weightData.length
+    ? weightData[weightData.length - 1].weight
+    : 0
+
+  const trendIncreasing = weightData.length > 1 &&
+    weightData[weightData.length - 1].weight >= weightData[0].weight
+
+  // Tiga aktivitas pengukuran terbaru dari sapi aktif
+  const recentActivities = measurements
+    .filter((item) => activeCattleIds.has(item.cattleId))
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, 3)
+    .map((item) => {
+      const cow = activeCattle.find(
+        (animal) => animal.id === item.cattleId
+      )
+
+      return {
+        id: item.id,
+        cattleId: item.cattleId,
+        earTag: cow?.tag ?? 'Tidak diketahui',
+        weight: `${item.weight} kg`,
+        date: formatDate(item.date),
+      }
+    })
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 pb-10">
-      
-      {/* 1. HEADER BARU: Lebih ramai, bergradasi, dan informatif */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 bg-gradient-to-r from-pale-sage/50 via-pale-sage/10 to-transparent p-6 sm:p-8 rounded-3xl border-l-8 border-forest-canopy shadow-sm">
+    <div className={styles.dashboard}>
+      <section className={styles.welcomeSection}>
         <div>
-          <span className="text-xs font-bold text-forest-canopy uppercase tracking-widest mb-3 flex items-center gap-2">
-            <Activity size={16} /> Ikhtisar Peternakan
-          </span>
-          <h1 className="text-3xl md:text-4xl font-bold text-deep-charcoal mb-2">Halo, Lembu Subur! 👋</h1>
-          <p className="text-sage-field font-medium">Pantau terus perkembangan bobot ternak Anda hari ini.</p>
+          <span className={styles.eyebrow}>RINGKASAN PETERNAKAN</span>
+          <h2>Selamat datang kembali.</h2>
+          <p>
+            Pantau perkembangan bobot dan kondisi ternak
+            dari satu tempat.
+          </p>
         </div>
-        
-        {/* Lencana Tanggal Dinamis */}
-        <div className="flex items-center gap-3 bg-white px-5 py-3 rounded-xl shadow-sm border border-pale-sage w-fit mt-2 md:mt-0">
-          <CalendarDays size={20} className="text-forest-canopy" />
-          <span className="text-sm font-bold text-deep-charcoal">{tanggalHariIni}</span>
+
+        <div className={styles.dateLabel}>
+          <CalendarDays size={16} />
+          <span>November 2026</span>
         </div>
-      </div>
+      </section>
 
-      {/* 2. KARTU METRIK: Ditambah watermark background dan lencana tren */}
-      <div className="grid grid-cols-2 gap-4 md:gap-6">
-        <Card className="relative overflow-hidden border-pale-sage hover:border-forest-canopy transition-colors">
-          {/* Ornamen Dekoratif (Watermark) */}
-          <div className="absolute -right-6 -top-6 text-pale-sage/30 pointer-events-none">
-            <Box size={120} strokeWidth={1} />
+      <section className={styles.statsSection}>
+        <article className={styles.primaryStat}>
+          <div className={styles.statTop}>
+            <span>Total Sapi Aktif</span>
+            <Beef size={21} />
           </div>
-          <CardBody className="flex flex-col items-center md:items-start text-center md:text-left relative z-10 p-6 md:p-8">
-            <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-forest-canopy mb-4 shadow-sm border border-pale-sage">
-              <Box size={24} />
-            </div>
-            <p className="text-sage-field text-xs sm:text-sm font-bold uppercase tracking-wider mb-2">Total Sapi</p>
-            <div className="flex items-end gap-3">
-              <h3 className="text-4xl sm:text-5xl font-black text-deep-charcoal">{totalSapi}</h3>
-              <span className="hidden sm:flex items-center text-xs font-bold text-forest-canopy bg-pale-sage/50 px-2 py-1 rounded-md mb-2">
-                <TrendingUp size={12} className="mr-1" /> Aktif
-              </span>
-            </div>
-          </CardBody>
-        </Card>
-        
-        <Card className="relative overflow-hidden border-pale-sage hover:border-forest-canopy transition-colors">
-          {/* Ornamen Dekoratif (Watermark) */}
-          <div className="absolute -right-6 -top-6 text-pale-sage/30 pointer-events-none">
-            <Activity size={120} strokeWidth={1} />
+          <div className={styles.statValue}>{stats.activeCattle}</div>
+          <div className={styles.statBottom}>
+            <span>Terdaftar di peternakan</span>
+            <span className={styles.statAccent}>EKOR</span>
           </div>
-          <CardBody className="flex flex-col items-center md:items-start text-center md:text-left relative z-10 p-6 md:p-8">
-            <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-forest-canopy mb-4 shadow-sm border border-pale-sage">
-              <Activity size={24} />
-            </div>
-            <p className="text-sage-field text-xs sm:text-sm font-bold uppercase tracking-wider mb-2">Total Pengukuran</p>
-            <div className="flex items-end gap-3">
-              <h3 className="text-4xl sm:text-5xl font-black text-deep-charcoal">{totalPengukuran}</h3>
-              <span className="hidden sm:flex items-center text-xs font-bold text-forest-canopy bg-pale-sage/50 px-2 py-1 rounded-md mb-2">
-                <TrendingUp size={12} className="mr-1" /> Terdata
-              </span>
-            </div>
-          </CardBody>
-        </Card>
-      </div>
+        </article>
 
-      {/* Tombol Aksi Utama */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Link to="/ukur">
-          <Button variant="primary" className="w-full py-4 text-lg flex gap-2 shadow-md hover:shadow-lg transition-shadow">
-            <Camera size={24} /> Ukur Bobot Sapi
-          </Button>
-        </Link>
-        <Link to="/ukur/baru">
-          <Button variant="outline" className="w-full py-4 text-lg flex gap-2 bg-white hover:bg-pale-sage/20 border-2">
-            <PlusCircle size={24} /> Tambah Sapi Baru
-          </Button>
-        </Link>
-      </div>
+        <article className={styles.secondaryStat}>
+          <div className={styles.statTop}>
+            <span>Total Pengukuran</span>
+            <Scale size={21} />
+          </div>
+          <div className={styles.statValue}>
+            {stats.totalMeasurements}
+          </div>
+          <div className={styles.statBottom}>
+            <span>Seluruh riwayat pengukuran</span>
+          </div>
+        </article>
 
-      <div className="grid md:grid-cols-2 gap-6 pt-2">
-        {/* Kolom Kiri: Sapi Terbaru */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-bold text-deep-charcoal">Sapi Terbaru Terdaftar</h3>
-            <Link to="/sapi" className="text-sm font-bold text-forest-canopy hover:underline">Lihat Semua</Link>
+        <article className={styles.secondaryStat}>
+          <div className={styles.statTop}>
+            <span>Rata-rata Bobot</span>
+            <Activity size={21} />
           </div>
-          <div className="space-y-3">
-            {sapiTerbaru.length > 0 ? (
-              sapiTerbaru.map(sapi => (
-                <Link to={`/sapi/${sapi.id}`} key={sapi.id}>
-                  <Card className="hover:border-forest-canopy hover:shadow-sm transition-all">
-                    <CardBody className="p-4 flex justify-between items-center">
-                      <div>
-                        <p className="font-bold text-deep-charcoal text-lg">{sapi.nama}</p>
-                        <p className="text-xs font-medium text-sage-field mt-0.5">{sapi.id} • {sapi.kelamin}</p>
-                      </div>
-                      <div className="text-right bg-warm-limestone/50 px-3 py-1.5 rounded-lg border border-pale-sage/50">
-                        <p className="font-bold text-forest-canopy">{sapi.bobotTerakhir} kg</p>
-                      </div>
-                    </CardBody>
-                  </Card>
-                </Link>
-              ))
-            ) : (
-              <Card><CardBody className="text-center py-6 text-sage-field bg-white/50 border border-dashed rounded-xl">Belum ada data sapi.</CardBody></Card>
-            )}
+          <div className={styles.statValue}>
+            {stats.averageWeight} <small>kg</small>
           </div>
+          <div className={styles.statBottom}>
+            <span>Dari sapi aktif yang terukur</span>
+          </div>
+        </article>
+      </section>
+
+      <section className={styles.mainGrid}>
+        <article className={styles.chartPanel}>
+          <div className={styles.panelHeader}>
+            <div>
+              <span className={styles.eyebrow}>PERKEMBANGAN TERNAK</span>
+              <h3>Tren rata-rata bobot</h3>
+            </div>
+            <span className={styles.periodLabel}>
+              {weightData.length} bulan data
+            </span>
+          </div>
+
+          <div className={styles.chartSummary}>
+            <strong>{latestWeight} kg</strong>
+            <span>
+              {trendIncreasing && <ArrowUpRight size={15} />}
+              {trendIncreasing ? 'Tren meningkat' : 'Perkembangan bobot'}
+            </span>
+          </div>
+
+          <div className={styles.chartArea}>
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart
+                data={weightData}
+                margin={{ top: 12, right: 8, left: 0, bottom: 0 }}
+              >
+                <defs>
+                  <linearGradient id="weightGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#496B50" stopOpacity={0.28} />
+                    <stop offset="100%" stopColor="#496B50" stopOpacity={0.01} />
+                  </linearGradient>
+                </defs>
+
+                <CartesianGrid
+                  vertical={false}
+                  stroke="#d7d8cc"
+                  strokeDasharray="3 5"
+                />
+
+                <XAxis
+                  dataKey="month"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: '#858d84', fontSize: 11 }}
+                  dy={10}
+                />
+
+                <YAxis
+  width={38}
+  axisLine={false}
+  tickLine={false}
+  tick={{ fill: '#858d84', fontSize: 10 }}
+  tickMargin={6}
+  tickCount={4}
+  domain={['dataMin - 20', 'dataMax + 20']}
+/>
+                <Tooltip
+                  formatter={(value) => [`${value} kg`, 'Rata-rata bobot']}
+                  contentStyle={{
+                    borderRadius: 10,
+                    border: '1px solid #d7d8cc',
+                    fontSize: 12,
+                  }}
+                />
+
+                <Area
+                  type="monotone"
+                  dataKey="weight"
+                  stroke="#496B50"
+                  strokeWidth={2.5}
+                  fill="url(#weightGradient)"
+                  activeDot={{ r: 5, fill: '#203C32' }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+
+          <p className={styles.chartNote}>
+            Rata-rata berdasarkan riwayat pengukuran sapi aktif.
+          </p>
+        </article>
+
+        <article className={styles.distributionPanel}>
+          <span className={styles.eyebrow}>KOMPOSISI TERNAK</span>
+          <h3>Jenis kelamin sapi</h3>
+
+          <div className={styles.distributionVisual}>
+            <div
+              className={styles.donut}
+              style={{
+                background: `conic-gradient(
+                  #496B50 0% ${malePercentage}%,
+                  #A2AD78 ${malePercentage}% 100%
+                )`,
+              }}
+            >
+              <div>
+                <strong>{totalGender}</strong>
+                <span>Total sapi</span>
+              </div>
+            </div>
+          </div>
+
+          <div className={styles.legend}>
+            <div>
+              <span className={styles.legendMale} />
+              <span>Jantan</span>
+              <strong>{maleCount}</strong>
+            </div>
+            <div>
+              <span className={styles.legendFemale} />
+              <span>Betina</span>
+              <strong>{femaleCount}</strong>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section className={styles.activityPanel}>
+        <div className={styles.activityHeader}>
+          <div>
+            <span className={styles.eyebrow}>CATATAN TERBARU</span>
+            <h3>Aktivitas pengukuran</h3>
+          </div>
+
+          <a href="/app/sapi" className={styles.viewAll}>
+            Lihat data sapi <ArrowRight size={15} />
+          </a>
         </div>
-        
-        {/* Kolom Kanan: Pengukuran Terbaru */}
-        <div>
-           <div className="flex items-center justify-between mb-4">
-             <h3 className="text-lg font-bold text-deep-charcoal">Riwayat Pengukuran</h3>
-           </div>
-           <div className="space-y-3">
-              {pengukuranTerbaru.length > 0 ? (
-                pengukuranTerbaru.map((ukur, index) => (
-                  <Link to={`/sapi/${ukur.idSapi}`} key={index}>
-                    <Card className="hover:border-forest-canopy hover:shadow-sm transition-all">
-                      <CardBody className="p-4 flex justify-between items-center">
-                        <div className="flex items-center gap-3">
-                          <div className="bg-pale-sage/30 p-2.5 rounded-xl text-forest-canopy border border-pale-sage hidden sm:block">
-                            <Clock size={20} />
-                          </div>
-                          <div>
-                            <p className="font-bold text-deep-charcoal text-lg">{ukur.namaSapi}</p>
-                            <p className="text-xs font-medium text-sage-field mt-0.5">{ukur.tanggal}</p>
-                          </div>
-                        </div>
-                        <div className="text-right bg-warm-limestone/50 px-3 py-1.5 rounded-lg border border-pale-sage/50">
-                          <p className="font-black text-forest-canopy">{ukur.bobot} kg</p>
-                        </div>
-                      </CardBody>
-                    </Card>
-                  </Link>
-                ))
-              ) : (
-                <Card><CardBody className="text-center py-6 text-sage-field bg-white/50 border border-dashed rounded-xl">Belum ada data pengukuran.</CardBody></Card>
-              )}
-           </div>
-        </div>
-      </div>
 
+        <div className={styles.activityList}>
+          {recentActivities.map((activity) => (
+            <div className={styles.activityItem} key={activity.id}>
+              <div className={styles.activityIcon}>
+                <Scale size={18} />
+              </div>
+
+              <div className={styles.activityInfo}>
+                <strong>{activity.earTag}</strong>
+                <span>ID Sapi {activity.cattleId}</span>
+              </div>
+
+              <div className={styles.activityWeight}>
+                <strong>{activity.weight}</strong>
+                <span>{activity.date}</span>
+              </div>
+            </div>
+          ))}
+
+          {recentActivities.length === 0 && (
+            <p>Belum ada aktivitas pengukuran.</p>
+          )}
+        </div>
+      </section>
     </div>
-  );
+  )
 }
+
+export default DashboardPage

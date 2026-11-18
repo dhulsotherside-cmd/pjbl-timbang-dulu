@@ -1,0 +1,208 @@
+
+.page {
+  min-height: 100vh;
+  padding: 32px 24px;
+  background: #F2F0E6;
+  color: #292E2A;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.brand {
+  position: absolute;
+  top: 32px;
+  left: 5%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #203C32;
+  text-decoration: none;
+  font-size: 1.05rem;
+  font-weight: 750;
+  letter-spacing: -0.04em;
+}
+
+.brandIcon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: #203C32;
+  color: #F2F0E6;
+  display: grid;
+  place-items: center;
+}
+
+.card {
+  width: 100%;
+  max-width: 430px;
+  padding: 42px;
+  border: 1px solid #E4E3D9;
+  border-radius: 20px;
+  background: #FBFAF6;
+}
+
+.heading {
+  margin-bottom: 32px;
+}
+
+.eyebrow {
+  color: #71816D;
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.13em;
+}
+
+.heading h1 {
+  margin: 14px 0 10px;
+  color: #203C32;
+  font-size: clamp(1.8rem, 5vw, 2.25rem);
+  line-height: 1.12;
+  letter-spacing: -0.065em;
+}
+
+.heading p {
+  margin: 0;
+  color: #737C72;
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.form label {
+  color: #34483B;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.form input {
+  width: 100%;
+  min-width: 0;
+  height: 48px;
+  padding: 0 14px;
+  border: 1px solid #D7D8CC;
+  border-radius: 9px;
+  outline: none;
+  background: #FFFFFF;
+  color: #292E2A;
+  font: inherit;
+  font-size: 0.88rem;
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.form input::placeholder {
+  color: #A0A69B;
+}
+
+.form input:focus {
+  border-color: #496B50;
+  box-shadow: 0 0 0 3px rgba(73, 107, 80, 0.1);
+}
+
+.passwordHeading {
+  margin-top: 12px;
+}
+
+.passwordField {
+  position: relative;
+}
+
+.passwordField input {
+  padding-right: 48px;
+}
+
+.eyeButton {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  border: 0;
+  padding: 5px;
+  background: transparent;
+  color: #778276;
+  cursor: pointer;
+}
+
+.submitButton {
+  height: 50px;
+  margin-top: 14px;
+  border: 0;
+  border-radius: 9px;
+  background: #203C32;
+  color: #F2F0E6;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 180ms ease, transform 180ms ease;
+}
+
+.submitButton:hover {
+  background: #496B50;
+}
+
+.submitButton:active {
+  transform: scale(0.99);
+}
+
+.message {
+  margin: 5px 0 0;
+  color: #496B50;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.switchPage {
+  margin: 26px 0 0;
+  color: #7A8177;
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+.switchPage a {
+  color: #203C32;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.switchPage a:hover {
+  text-decoration: underline;
+}
+
+.footer {
+  position: absolute;
+  bottom: 22px;
+  color: #92988D;
+  font-size: 0.62rem;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  text-align: center;
+}
+
+@media (max-width: 520px) {
+  .page {
+    padding: 90px 20px 70px;
+  }
+
+  .brand {
+    top: 24px;
+    left: 20px;
+  }
+
+  .card {
+    padding: 30px 24px;
+    border-radius: 16px;
+  }
+
+  .footer {
+    bottom: 18px;
+    font-size: 0.55rem;
+  }
+}

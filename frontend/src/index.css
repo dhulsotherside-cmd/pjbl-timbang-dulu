@@ -1,22 +1,67 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Manrope:wght@400;500;600;700&display=swap');
-@import "tailwindcss";
 
-@theme {
-  /* Palet Warna Earthbound */
-  --color-forest-canopy: #263D32;
-  --color-sage-field: #71816B;
-  --color-pale-sage: #D8DDCE;
-  --color-warm-limestone: #F4F1E8;
-  --color-raw-earth: #B29B7D;
-  --color-terracotta: #A9664C;
-  --color-deep-charcoal: #30332F;
+@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Geist:wght@400;500;600;700;800&display=swap');
 
-  /* Typography */
-  --font-sans: 'Manrope', sans-serif;
-  --font-serif: 'DM Serif Display', serif;
+:root {
+  font-family: 'Geist', sans-serif;
+  color: #292E2A;
+  background: #F2F0E6;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+
+  --forest: #203C32;
+  --botanical: #496B50;
+  --olive: #A2AD78;
+  --cream: #F2F0E6;
+  --stone: #D7D8CC;
+  --charcoal: #292E2A;
+  --white: #FFFFFF;
+
+  --font-main: 'Geist', sans-serif;
+  --font-mono: 'Geist Mono', monospace;
 }
 
-/* Base style untuk seluruh halaman */
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
 body {
-  @apply bg-warm-limestone text-deep-charcoal font-sans antialiased;
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  font-family: var(--font-main);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+::selection {
+  color: var(--white);
+  background: var(--botanical);
 }

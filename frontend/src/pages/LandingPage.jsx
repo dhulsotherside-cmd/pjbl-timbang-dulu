@@ -1,154 +1,416 @@
-// Lokasi: src/pages/LandingPage.jsx
-import React from 'react';
-import { Link } from 'react-router-dom';
-import Navbar from '../components/Navbar';
-import Button from '../components/Button';
-import { Camera, BrainCircuit, LineChart, ShieldAlert, CheckCircle2, Beef } from 'lucide-react';
+import { useEffect } from 'react'
+import FarmScene from '../components/landing/FarmScene'
+import styles from './LandingPage.module.css'
+import sapiSamping from '../assets/images/sapi-samping.png'
+import sapiBelakang from '../assets/images/sapi-belakang.png'
+import logo from '../assets/images/logo-timbangdulu.png'
 
 export default function LandingPage() {
+  useEffect(() => {
+  const elements = document.querySelectorAll(
+    `.${styles.features} [data-reveal]`
+  )
+
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add(styles.isVisible)
+          observer.unobserve(entry.target)
+        }
+      })
+    },
+    {
+      threshold: 0.12,
+      rootMargin: '0px 0px -40px 0px',
+    }
+  )
+
+  elements.forEach((element) => observer.observe(element))
+
+  return () => observer.disconnect()
+}, [])
   return (
-    <div className="min-h-screen bg-warm-limestone selection:bg-sage-field selection:text-white">
-      <Navbar />
-      
-      {/* Hero Section */}
-      <section className="relative h-screen flex items-center justify-center">
-        <div className="absolute inset-0 z-0">
-          <img 
-            src="https://images.unsplash.com/photo-1570042225831-d98fa7577f1e?ixlib=rb-4.0.3&auto=format&fit=crop&w=1920&q=80" 
-            alt="Sapi di peternakan" 
-            className="w-full h-full object-cover"
-          />
-          <div className="absolute inset-0 bg-forest-canopy/80 mix-blend-multiply"></div>
+    <main className={styles.landingPage}>
+      {/* Navigation */}
+      <nav className={styles.navbar}>
+        <a href="#beranda" className={styles.logo}>
+  <img src={logo} alt="" className={styles.brandLogo} />
+  <span>TimbangDulu</span>
+</a>
+
+        <div className={styles.navLinks}>
+          <a href="#beranda">Beranda</a>
+          <a href="#fitur">Fitur</a>
+          <a href="#tentang">Tentang</a>
         </div>
 
-        <div className="relative z-10 text-center px-4 max-w-4xl mx-auto flex flex-col items-center pt-16">
-          <h1 className="text-4xl md:text-6xl lg:text-7xl font-serif text-white mb-6 leading-tight">
-            Pantau Bobot Sapi, <br className="hidden md:block" /> Lebih Praktis dengan Teknologi.
+        <a href="/register" className={styles.navCta}>
+          Daftar Sekarang 
+        </a>
+      </nav>
+
+      {/* Hero */}
+      <section id="beranda" className={styles.hero}>
+        <div className={styles.heroScene}>
+  <FarmScene />
+</div>
+
+        <div className={styles.heroContent}>
+          <h1>
+            Cara Baru
+            <br />
+            Mengelola
+            <br />
+            <span>Peternakan.</span>
           </h1>
-          <p className="text-lg md:text-xl text-pale-sage mb-10 max-w-2xl font-medium">
-            Estimasi bobot sapi melalui foto untuk membantu Anda memantau perkembangan ternak secara berkala.
+
+          <p className={styles.heroDescription}>
+            Estimasi bobot sapi dari foto. Pantau pertumbuhan
+            dan kelola data ternak dalam satu platform.
           </p>
-          <Link to="/login">
-            <Button variant="primary" className="text-lg px-8 py-4">
-              Mulai Sekarang
-            </Button>
-          </Link>
-        </div>
-      </section>
 
-      {/* Bagian Cara Kerja */}
-      <section id="cara-kerja" className="py-24 px-4 max-w-7xl mx-auto">
-        <div className="text-center mb-16">
-          <h2 className="text-3xl md:text-4xl font-serif text-forest-canopy mb-4">Bagaimana Cara Kerjanya?</h2>
-          <p className="text-deep-charcoal max-w-2xl mx-auto text-lg">Proses pengukuran yang dirancang khusus agar praktis digunakan di lapangan oleh peternak.</p>
-        </div>
-        
-        <div className="grid md:grid-cols-3 gap-12">
-          {/* Langkah 1 */}
-          <div className="flex flex-col items-center text-center space-y-4">
-            <div className="w-20 h-20 bg-pale-sage rounded-2xl flex items-center justify-center text-forest-canopy shadow-sm">
-              <Camera size={40} strokeWidth={1.5} />
-            </div>
-            <h3 className="text-xl font-bold text-deep-charcoal">1. Ambil Foto</h3>
-            <p className="text-sage-field">Ambil foto sapi dari beberapa sudut untuk mendapatkan estimasi bobot yang lebih optimal.</p>
-          </div>
-          {/* Langkah 2 */}
-          <div className="flex flex-col items-center text-center space-y-4">
-            <div className="w-20 h-20 bg-pale-sage rounded-2xl flex items-center justify-center text-forest-canopy shadow-sm">
-              <BrainCircuit size={40} strokeWidth={1.5} />
-            </div>
-            <h3 className="text-xl font-bold text-deep-charcoal">2. Proses AI</h3>
-            <p className="text-sage-field">Sistem Machine Learning kami akan menganalisis estimasi bobot dari proporsi tubuh sapi di foto.</p>
-          </div>
-          {/* Langkah 3 */}
-          <div className="flex flex-col items-center text-center space-y-4">
-            <div className="w-20 h-20 bg-pale-sage rounded-2xl flex items-center justify-center text-forest-canopy shadow-sm">
-              <LineChart size={40} strokeWidth={1.5} />
-            </div>
-            <h3 className="text-xl font-bold text-deep-charcoal">3. Pantau Hasil</h3>
-            <p className="text-sage-field">Lihat hasil estimasi bobot dan pantau perkembangannya dari waktu ke waktu.</p>
+          <div className={styles.heroActions}>
+            <a href="/register" className={styles.primaryButton}>
+              Mulai Sekarang 
+            </a>
+
           </div>
         </div>
       </section>
 
-      {/* Bagian Fitur Utama */}
-      <section id="fitur" className="py-24 px-4 bg-pale-sage/30">
-        <div className="max-w-7xl mx-auto grid md:grid-cols-2 gap-16 items-center">
-          <div>
-            <h2 className="text-3xl md:text-4xl font-serif text-forest-canopy mb-8">Fitur yang Memudahkan Peternak</h2>
-            <div className="space-y-6">
-              <div className="flex gap-4">
-                <CheckCircle2 className="text-forest-canopy shrink-0 mt-1" />
-                <div>
-                  <h4 className="font-bold text-deep-charcoal text-lg">Manajemen Data Sapi</h4>
-                  <p className="text-sage-field">Simpan profil setiap sapi di peternakan Anda dengan ID unik secara otomatis.</p>
-                </div>
-              </div>
-              <div className="flex gap-4">
-                <CheckCircle2 className="text-forest-canopy shrink-0 mt-1" />
-                <div>
-                  <h4 className="font-bold text-deep-charcoal text-lg">Riwayat & Grafik Pertumbuhan</h4>
-                  <p className="text-sage-field">Pantau tren kenaikan atau penurunan bobot melalui grafik visual yang mudah dibaca.</p>
-                </div>
-              </div>
-              <div className="flex gap-4">
-                <CheckCircle2 className="text-forest-canopy shrink-0 mt-1" />
-                <div>
-                  <h4 className="font-bold text-deep-charcoal text-lg">Desain Mobile-First</h4>
-                  <p className="text-sage-field">Akses cepat dan ringan langsung dari smartphone Anda saat berada di kandang.</p>
-                </div>
-              </div>
-            </div>
+      {/* Features */}
+      
+      {/* Features */}
+      
+      {/* Features */}
+      <section id="fitur" className={styles.features}>
+        <div className={styles.featuresOrbit} aria-hidden="true">
+          <span className={styles.orbitCircle} />
+          <span className={styles.orbitDot} />
+          <span className={styles.orbitCross}>✳</span>
+        </div>
+
+        <div className={styles.featuresHeader}>
+          <div className={styles.featuresHeading} data-reveal>
+            <p className={styles.eyebrow}>APA YANG BISA DILAKUKAN</p>
+            <h2>
+              Lebih dari
+              <br />
+              sekadar <span>menimbang.</span>
+            </h2>
           </div>
-          {/* Dekorasi Visual Fitur */}
-          <div className="bg-forest-canopy p-8 md:p-12 rounded-3xl text-white shadow-xl relative overflow-hidden">
-             <div className="absolute -top-10 -right-10 p-8 opacity-10">
-               <Beef size={250} />
-             </div>
-             <h3 className="text-2xl md:text-3xl font-serif mb-4 relative z-10 leading-snug">
-               Fokus pada pertumbuhan, bukan administrasi rumit.
-             </h3>
-             <p className="text-pale-sage relative z-10 text-lg">
-               Kami menghapus fitur yang tidak perlu agar Anda bisa fokus pada hal yang paling penting: memantau bobot ternak Anda secara efisien.
-             </p>
+
+<div className={styles.featuresIntro} data-reveal>
+  <p>
+    Kenali, kelola, dan pantau perkembangan ternak.
+    Semua kebutuhan pengelolaan sapi dalam satu platform.
+  </p>
+</div>
+        </div>
+
+        <div className={styles.featureComposition}>
+          <article className={styles.featureMain} data-reveal>
+            <div className={styles.featureMainTop}>
+              <span className={styles.featureTag}>
+                01 — ESTIMASI BOBOT
+              </span>
+            </div>
+
+            <div className={styles.featureMainCopy}>
+  <h3>
+    Estimasi bobot
+    <br />
+    dari foto sapi.
+  </h3>
+  <p>
+    Unggah dua foto sapi untuk mendapatkan estimasi
+    bobot dengan lebih praktis.
+  </p>
+</div>
+            
+<div className={styles.featureVisual}>
+  <div className={styles.measurementPreview}>
+    <div className={styles.previewHeader}>
+      <span>ANALISIS FOTO</span>
+      <span className={styles.previewStatus}>
+        <i /> SELESAI
+      </span>
+    </div>
+
+    <div className={styles.previewPhotos}>
+  <div className={styles.previewPhoto}>
+    <img src={sapiSamping} alt="Tampak samping sapi" />
+    <span>FOTO SAMPING</span>
+  </div>
+
+  <div className={styles.previewPhoto}>
+    <img src={sapiBelakang} alt="Tampak belakang sapi" />
+    <span>FOTO BELAKANG</span>
+  </div>
+</div>
+
+    <div className={styles.previewResult}>
+      <div>
+        <span className={styles.resultLabel}>ESTIMASI BOBOT</span>
+        <strong>485 <small>kg</small></strong>
+      </div>
+      <span className={styles.resultIcon}>↗</span>
+    </div>
+  </div>
+</div>
+
+
+            <div className={styles.featureMainBottom}>
+  <span>ESTIMASI BOBOT BERBASIS FOTO</span>
+</div>
+          </article>
+
+          <div className={styles.featureSecondary}>
+            <article className={styles.featureSmall} data-reveal>
+              <div className={styles.featureSmallTop}>
+                <span className={styles.featureTag}>02 — MANAJEMEN</span>
+                <span className={styles.featureSmallNumber}>02</span>
+              </div>
+
+              <div className={styles.managementVisual}>
+  <div className={styles.managementPreview}>
+    <div className={styles.managementPreviewHeader}>
+      <span>DAFTAR TERNAK</span>
+      <span>03 SAPI</span>
+    </div>
+
+    <div className={styles.cattleRow}>
+      <span className={styles.cattleAvatar}>S1</span>
+      <div className={styles.cattleInfo}>
+        <strong>Sapi 01</strong>
+        <small>ID-001 · Jantan</small>
+      </div>
+      <span className={styles.cattleIndicator} />
+    </div>
+
+    <div className={styles.cattleRow}>
+      <span className={styles.cattleAvatar}>S2</span>
+      <div className={styles.cattleInfo}>
+        <strong>Sapi 02</strong>
+        <small>ID-002 · Betina</small>
+      </div>
+      <span className={styles.cattleIndicator} />
+    </div>
+
+    <div className={styles.cattleRow}>
+      <span className={styles.cattleAvatar}>S3</span>
+      <div className={styles.cattleInfo}>
+        <strong>Sapi 03</strong>
+        <small>ID-003 · Jantan</small>
+      </div>
+      <span className={styles.cattleIndicator} />
+    </div>
+  </div>
+</div>
+
+              <div className={styles.featureSmallCopy}>
+                <h3>
+  Kelola data
+  sapi dengan mudah.
+</h3>
+                <p>
+  Simpan identitas dan informasi setiap sapi
+  dalam satu pengelolaan yang terorganisir.
+</p>
+              </div>
+
+            </article>
+
+            <article className={styles.featureSmall} data-reveal>
+              <div className={styles.featureSmallTop}>
+                <span className={styles.featureTag}>03 — MONITORING</span>
+                <span className={styles.featureSmallNumber}>03</span>
+              </div>
+
+              <div className={styles.monitorVisual}>
+  <div className={styles.monitorPreview}>
+    <div className={styles.monitorHeader}>
+      <div>
+        <span>RIWAYAT BOBOT</span>
+        <strong>Sapi 01</strong>
+      </div>
+      <span className={styles.monitorPeriod}>6 BULAN</span>
+    </div>
+
+    <div className={styles.monitorChart}>
+      <div className={styles.monitorValue}>
+        <strong>485</strong>
+        <small>kg</small>
+      </div>
+
+      <svg viewBox="0 0 320 100" preserveAspectRatio="none">
+        <path
+          className={styles.monitorArea}
+          d="M0 78 C45 72 55 62 95 65 S150 48 190 51 S250 27 320 16 L320 100 L0 100 Z"
+        />
+        <path
+          className={styles.monitorLine}
+          d="M0 78 C45 72 55 62 95 65 S150 48 190 51 S250 27 320 16"
+        />
+        <circle cx="0" cy="78" r="3" />
+        <circle cx="95" cy="65" r="3" />
+        <circle cx="190" cy="51" r="3" />
+        <circle cx="320" cy="16" r="4" />
+      </svg>
+    </div>
+
+    <div className={styles.monitorDates}>
+      <span>JUN</span>
+      <span>JUL</span>
+      <span>AGS</span>
+      <span>SEP</span>
+    </div>
+  </div>
+</div>
+
+              <div className={styles.featureSmallCopy}>
+                <h3>
+  Pantau perubahan
+  <br />
+  bobot ternak.
+</h3>
+                <p>
+  Lihat riwayat pengukuran untuk memantau
+  perkembangan bobot setiap sapi dari waktu ke waktu.
+</p>
+              </div>
+
+            </article>
           </div>
         </div>
       </section>
 
-      {/* Disclaimer & Final CTA */}
-      <section className="py-24 px-4 max-w-4xl mx-auto text-center space-y-12">
-        {/* Kotak Peringatan/Disclaimer */}
-        <div className="bg-terracotta/10 border border-terracotta/20 rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-start md:items-center gap-6 text-left shadow-sm">
-          <div className="bg-terracotta text-white p-4 rounded-full shrink-0">
-            <ShieldAlert size={32} />
+
+
+      {/* Product Showcase */}
+      <section id="tentang" className={styles.showcase}>
+        <div className={styles.showcaseHeader}>
+          <p className={styles.eyebrow}>MANAJEMEN TERPADU</p>
+          <h2>
+            Kenali perkembangan
+            <br />
+            peternakan Anda.
+          </h2>
+        </div>
+
+        <div className={styles.showcaseBody}>
+          <div className={styles.showcaseVisual}>
+            <div className={styles.showcaseImage}>
+              <img
+                src="https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=1400&q=85"
+                alt="Hamparan lahan pertanian"
+                loading="lazy"
+              />
+            </div>
+
+            
+
+<div className={styles.showcasePanel}>
+  <div className={styles.panelTop}>
+    <span>TIMBANGDULU / RINGKASAN</span>
+    <span>PREVIEW</span>
+  </div>
+
+  <p className={styles.panelLabel}>PENGELOLAAN TERNAK</p>
+  <h3>Satu tempat untuk seluruh data peternakan.</h3>
+
+  <div className={styles.panelMetrics}>
+  <div>
+    <div className={styles.metricValue}>
+      <strong>12</strong>
+      <span>ekor sapi aktif</span>
+    </div>
+  </div>
+
+  <div>
+    <div className={styles.metricValue}>
+      <strong>48</strong>
+      <span>catatan pengukuran</span>
+    </div>
+  </div>
+</div>
+
+  <div className={styles.panelFooter}>
+    <span>DATA SAPI TERSIMPAN</span>
+    <span>BOBOT TERCATAT</span>
+  </div>
+</div>
+
+
           </div>
-          <div>
-            <h4 className="font-bold text-deep-charcoal text-xl mb-2">Penting untuk Diketahui</h4>
-            <p className="text-sage-field text-base leading-relaxed">
-              Platform ini memberikan <strong>estimasi</strong> bobot berbasis Machine Learning untuk keperluan pemantauan rutin. Hasil estimasi <span className="font-bold text-terracotta">tidak ditujukan sebagai pengganti timbangan fisik resmi</span> untuk keperluan transaksi jual beli ternak.
+
+          <div className={styles.showcaseContent}>
+            <p>
+              Simpan data sapi, catat hasil pengukuran,
+              dan pantau perkembangan ternak dalam
+              satu tempat.
             </p>
+
+            <a href="/register" className={styles.showcaseLink}>
+              Mulai kelola peternakan 
+            </a>
           </div>
         </div>
-        
-        <div className="pt-8">
-          <h2 className="text-3xl md:text-4xl font-serif text-forest-canopy mb-8">Siap memodernisasi peternakan Anda?</h2>
-          <Link to="/register">
-            <Button variant="primary" className="text-lg px-10 py-4">
-              Buat Akun Peternakan
-            </Button>
-          </Link>
+      </section>
+
+      {/* Call to Action */}
+      <section className={styles.ctaSection}>
+        <div className={styles.ctaImage}>
+          <img
+            src="https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=1800&q=85"
+            alt=""
+            loading="lazy"
+          />
+        </div>
+
+        <div className={styles.ctaContent}>
+          <p className={styles.eyebrow}>
+            LANGKAH BARU PETERNAKAN
+          </p>
+
+          <h2>
+            Kelola data ternak,
+            <br />
+            pantau bobotnya,
+            <br />
+            <span>dengan lebih mudah.</span>
+          </h2>
+
+          <a href="/register" className={styles.ctaLink}>
+            Daftar Sekarang 
+          </a>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-pale-sage bg-white py-12 text-center text-sage-field">
-        <div className="flex justify-center items-center gap-2 mb-4">
-          <Beef className="text-forest-canopy w-8 h-8" />
-          <span className="font-serif text-2xl text-forest-canopy font-bold">BobotSapi</span>
+      <footer className={styles.footer}>
+        <div className={styles.footerTop}>
+          <a href="#beranda" className={styles.footerLogo}>
+  <img src={logo} alt="" className={styles.footerBrandLogo} />
+  <span>TimbangDulu</span>
+</a>
+          <p>
+            Teknologi sederhana untuk pengelolaan
+            peternakan yang lebih terarah.
+          </p>
+
+          <div className={styles.footerLinks}>
+            <a href="#beranda">Beranda</a>
+            <a href="#fitur">Fitur</a>
+            <a href="#tentang">Tentang</a>
+          </div>
         </div>
-        <p className="mb-2">&copy; 2026 BobotSapi. All rights reserved.</p>
-        <p className="text-sm">Platform pemantauan bobot ternak secara efisien</p>
+
+        <div className={styles.footerBottom}>
+          <span>© 2026 TimbangDulu</span>
+        </div>
       </footer>
-    </div>
-  );
+    </main>
+  )
 }

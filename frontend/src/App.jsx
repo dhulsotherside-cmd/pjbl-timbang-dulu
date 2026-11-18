@@ -1,14 +1,33 @@
-// Lokasi: src/App.jsx
-import { Outlet } from 'react-router-dom';
+
+import { BrowserRouter, Routes, Route } from 'react-router-dom'
+
+import AppLayout from './components/layout/AppLayout'
+import DashboardPage from './pages/DashboardPage'
+import CattlePage from './pages/CattlePage'
+import CattleDetailPage from './pages/CattleDetailPage'
+import MeasurementPage from './pages/MeasurementPage'
+import AccountPage from './pages/AccountPage'
+import LandingPage from './pages/LandingPage'
+import LoginPage from './pages/LoginPage'
+import RegisterPage from './pages/RegisterPage'
 
 function App() {
   return (
-    <div className="min-h-screen bg-warm-limestone text-deep-charcoal flex flex-col">
-      {/* Konten Halaman sesuai Router akan muncul di sini */}
-      <main className="flex-1 flex flex-col">
-        <Outlet /> 
-      </main>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+
+        <Route path="/app" element={<AppLayout />}>
+          <Route index element={<DashboardPage />} />
+          <Route path="sapi" element={<CattlePage />} />
+          <Route path="sapi/:id" element={<CattleDetailPage />} />
+          <Route path="ukur" element={<MeasurementPage />} />
+          <Route path="akun" element={<AccountPage />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
   )
 }
 

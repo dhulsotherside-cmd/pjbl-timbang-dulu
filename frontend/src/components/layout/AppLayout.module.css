@@ -1,0 +1,375 @@
+
+  .appShell {
+    min-height: 100vh;
+    display: flex;
+    background: var(--cream);
+  }
+
+
+  .sidebar {
+    width: 252px;
+    height: 100vh;
+    min-height: 100vh;
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    padding: 30px 20px 22px;
+
+    background:
+      radial-gradient(
+        ellipse at 0% 8%,
+        rgba(162, 173, 120, 0.20),
+        transparent 42%
+      ),
+      radial-gradient(
+        ellipse at 100% 75%,
+        rgba(73, 107, 80, 0.32),
+        transparent 45%
+      ),
+      linear-gradient(
+        155deg,
+        #29483a 0%,
+        #203c32 48%,
+        #172f27 100%
+      );
+
+    color: var(--white);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    overflow-y: auto;
+  }
+
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 0 5px;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.7px;
+}
+
+  .brandMark {
+    width: 37px;
+    height: 37px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    background: var(--olive);
+    color: var(--forest);
+  }
+
+  .farmLabel {
+    margin: 57px 10px 14px;
+    color: #aab8ac;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 1.2px;
+  }
+
+  .navigation {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .navLink {
+    min-height: 48px;
+    padding: 0 13px;
+    display: flex;
+    align-items: center;
+    gap: 13px;
+    border-radius: 10px;
+    color: #c6d0c8;
+    font-size: 13px;
+    font-weight: 500;
+    transition: background 180ms ease, color 180ms ease;
+  }
+
+  .navLink:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: white;
+  }
+
+  .active {
+    color: var(--forest);
+    background: var(--cream);
+    font-weight: 650;
+  }
+
+  .active:hover {
+    color: var(--forest);
+    background: var(--cream);
+  }
+
+  .sidebarBottom {
+    margin-top: auto;
+  }
+
+  .farmInfo {
+    padding: 14px 9px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.16);
+  }
+
+  .farmAvatar {
+    width: 35px;
+    height: 35px;
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--olive);
+    color: var(--forest);
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .farmInfo strong,
+  .farmInfo span {
+    display: block;
+  }
+
+  .farmInfo strong {
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .farmInfo span {
+    margin-top: 4px;
+    color: #b5c2b8;
+    font-size: 10px;
+  }
+
+  .sidebarBottom p {
+    margin: 8px 9px 0;
+    color: #aab8ac;
+    font-size: 10px;
+    line-height: 1.6;
+  }
+
+  .mainColumn {
+    min-width: 0;
+    flex: 1;
+    position: relative;
+    background:
+      radial-gradient(
+        circle at 90% 15%,
+        rgba(162, 173, 120, 0.28),
+        transparent 35%
+      ),
+      radial-gradient(
+        circle at 8% 80%,
+        rgba(73, 107, 80, 0.14),
+        transparent 38%
+      ),
+      #e9eadf;
+  }
+
+  .topbar {
+    min-height: 94px;
+    padding: 20px 42px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--stone);
+    background: rgba(255, 255, 255, 0.42);
+  }
+
+  .topbarEyebrow {
+    color: var(--botanical);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 1.5px;
+  }
+
+  .topbar h1 {
+    margin: 5px 0 0;
+    color: var(--charcoal);
+    font-size: 22px;
+    font-weight: 650;
+    letter-spacing: -0.8px;
+  }
+
+  .notificationButton {
+    width: 42px;
+    height: 42px;
+    position: relative;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--stone);
+    border-radius: 50%;
+    background: var(--white);
+    color: var(--forest);
+  }
+
+  .notificationButton span {
+    width: 7px;
+    height: 7px;
+    position: absolute;
+    top: 8px;
+    right: 9px;
+    border: 1px solid white;
+    border-radius: 50%;
+    background: #c17b54;
+  }
+
+  .pageContent {
+    width: 100%;
+    max-width: 1500px;
+    margin: 0 auto;
+    padding: 34px 42px 50px;
+    position: relative;
+    z-index: 1;
+  }
+  .mobileNav {
+    display: none;
+  }
+
+  @media (max-width: 900px) {
+    .sidebar {
+      width: 218px;
+      padding-inline: 15px;
+    }
+
+    .topbar {
+      padding-inline: 28px;
+    }
+
+    .pageContent {
+      padding-inline: 28px;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .appShell {
+      display: block;
+      padding-bottom: 76px;
+    }
+
+    .sidebar {
+      display: none;
+    }
+
+    .topbar {
+      min-height: 76px;
+      padding: 15px 20px;
+    }
+
+    .topbar h1 {
+      font-size: 19px;
+    }
+
+    .pageContent {
+      padding: 24px 18px 35px;
+    }
+
+    .mobileNav {
+      position: fixed;
+      z-index: 20;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      min-height: 68px;
+      padding: 7px 9px calc(7px + env(safe-area-inset-bottom));
+      display: flex;
+      justify-content: space-around;
+      background: var(--white);
+      border-top: 1px solid var(--stone);
+    }
+
+    .mobileNavLink {
+      min-width: 65px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      color: #858d84;
+      font-size: 10px;
+      font-weight: 500;
+    }
+
+    .mobileActive {
+      color: var(--botanical);
+      font-weight: 700;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .navLink {
+      transition: none;
+    }
+  }
+
+.brandLogo {
+  width: 58px;
+  height: 58px;
+  padding: 7px;
+  object-fit: contain;
+  flex-shrink: 0;
+  border-radius: 14px;
+  background: #F2F0E6;
+} 
+
+  .pageContent {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+  }
+
+  .organicShape {
+    position: absolute;
+    z-index: -1;
+    pointer-events: none;
+
+    width: 520px;
+    height: 390px;
+    top: -150px;
+    right: -180px;
+
+    border-radius: 38% 62% 53% 47% / 44% 37% 63% 56%;
+
+    background:
+      radial-gradient(
+        ellipse at 35% 40%,
+        rgba(162, 173, 120, 0.30),
+        transparent 65%
+      ),
+      linear-gradient(
+        135deg,
+        rgba(73, 107, 80, 0.13),
+        rgba(162, 173, 120, 0.06)
+      );
+
+    transform: rotate(-18deg);
+  }
+
+  .organicShape::before {
+    content: '';
+    position: absolute;
+    width: 340px;
+    height: 210px;
+    top: 250px;
+    left: 180px;
+
+    border-radius: 48% 52% 65% 35% / 55% 35% 65% 45%;
+
+    border: 1px solid rgba(73, 107, 80, 0.12);
+    transform: rotate(25deg);
+  }
+
+  .organicShape::after {
+    content: '';
+    position: absolute;
+    width: 260px;
+    height: 240px;
+    top: 180px;
+    left: -80px;
+    border-radius: 62% 38% 42% 58% / 50% 55% 45% 50%;
+    background: rgba(162, 173, 120, 0.12);
+  }

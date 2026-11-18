@@ -1,108 +1,256 @@
-// Lokasi: src/pages/RegisterPage.jsx
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import Button from '../components/Button';
-import Input from '../components/Input';
-import { Eye, EyeOff, Beef } from 'lucide-react';
+
+import { useState } from 'react'
+import { Link } from 'react-router-dom'
+import {
+  ArrowRight,
+  Eye,
+  EyeOff,
+  Building2,
+  UserRound,
+  Mail,
+  LockKeyhole,
+  House,
+} from 'lucide-react'
+
+import AuthLayout from '../components/auth/AuthLayout'
+import styles from '../components/auth/AuthLayout.module.css'
+
+const initialForm = {
+  nama_user: '',
+  nama_peternakan: '',
+  email: '',
+  password: '',
+  konfirmasiPassword: '',
+}
 
 export default function RegisterPage() {
-  const [showPassword, setShowPassword] = useState(false);
+  const [form, setForm] = useState(initialForm)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmation, setShowConfirmation] = useState(false)
+  const [notice, setNotice] = useState('')
+
+  const handleChange = (event) => {
+    const { name, value } = event.target
+
+    setForm((previous) => ({
+      ...previous,
+      [name]: value,
+    }))
+
+    setNotice('')
+  }
+
+  const handleSubmit = (event) => {
+    event.preventDefault()
+
+    if (form.password.length < 6) {
+      setNotice('Password minimal harus terdiri dari 6 karakter.')
+      return
+    }
+
+    if (form.password !== form.konfirmasiPassword) {
+      setNotice('Konfirmasi password belum cocok. Periksa kembali.')
+      return
+    }
+
+    setNotice(
+      'Form registrasi sudah siap. Proses pendaftaran akan diaktifkan setelah API backend tersedia.'
+    )
+  }
 
   return (
-    <div className="min-h-screen flex bg-warm-limestone">
-      
-<div className="hidden lg:flex lg:w-1/2 relative bg-forest-canopy">
-        <img
-          src="/sapi-register.jpg"
-          alt="Sapi di peternakan"
-          className="absolute inset-0 w-full h-full object-cover mix-blend-overlay opacity-70"
-        />
-        <div className="relative z-10 p-12 flex flex-col justify-between h-full w-full">
-          <Link to="/" className="flex items-center gap-2 text-white w-fit hover:opacity-80 transition-opacity">
-            <Beef className="w-8 h-8" />
-            <span className="font-serif text-2xl font-bold">BobotSapi</span>
-          </Link>
-          <div>
-            <h2 className="text-4xl lg:text-5xl font-serif text-white mb-4 leading-tight">
-              Mulai digitalisasi <br/> peternakan Anda.
-            </h2>
-            <p className="text-pale-sage text-lg max-w-md">
-              Satu akun untuk satu peternakan. Pantau bobot ternak dengan lebih cerdas dan praktis.
-            </p>
-          </div>
-        </div>
-      </div>
+    <AuthLayout
+  title="Mulai kelola peternakan Anda."
+  description="Buat akun untuk menyimpan data sapi, mencatat pengukuran, dan mengikuti perkembangannya."
+  size="wide"
+>
+      <form className={styles.form} onSubmit={handleSubmit}>
+        <div className={styles.fieldGrid}>
+          <div className={styles.field}>
+            <label className={styles.fieldLabel} htmlFor="nama_user">
+              Nama Admin
+            </label>
 
-      {/* SISI KANAN: Form Register */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-6 sm:p-12 overflow-y-auto">
-        <div className="w-full max-w-md space-y-6 bg-white p-8 rounded-2xl shadow-sm border border-pale-sage lg:border-none lg:shadow-none lg:bg-transparent lg:p-0 my-auto">
-          
-          <div className="text-center lg:text-left">
-            <Link to="/" className="inline-flex lg:hidden items-center gap-2 text-forest-canopy mb-6">
-              <Beef className="w-8 h-8" />
-              <span className="font-serif text-2xl font-bold">BobotSapi</span>
-            </Link>
-            
-            <h1 className="text-3xl font-bold text-deep-charcoal mb-2">Buat Akun</h1>
-            <p className="text-sage-field">Lengkapi data peternakan Anda di bawah ini.</p>
-          </div>
-
-          <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
-            <Input
-              label="Nama Peternakan"
-              id="farmName"
-              type="text"
-              placeholder="Misal: Lembu Subur"
-            />
-            
-            <Input
-              label="Nama Admin"
-              id="adminName"
-              type="text"
-              placeholder="Nama pengelola"
-            />
-
-            <Input
-              label="Email"
-              id="email"
-              type="email"
-              placeholder="admin@peternakan.com"
-            />
-            
-            <div className="relative">
-              <Input
-                label="Password"
-                id="password"
-                type={showPassword ? "text" : "password"}
-                placeholder="••••••••"
+            <div className={styles.inputWrap}>
+              <UserRound
+                className={styles.inputIcon}
+                size={17}
+                strokeWidth={1.8}
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-4 bottom-2.5 text-sage-field hover:text-forest-canopy transition-colors cursor-pointer"
-              >
-                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-              </button>
-            </div>
 
-            <div className="pt-4">
-              <Link to="/dashboard" className="block">
-                <Button variant="primary" className="w-full py-3">
-                  Daftar Sekarang
-                </Button>
-              </Link>
+              <input
+                className={styles.input}
+                id="nama_user"
+                name="nama_user"
+                type="text"
+                placeholder="Nama lengkap"
+                value={form.nama_user}
+                onChange={handleChange}
+                autoComplete="name"
+                required
+              />
             </div>
-          </form>
+          </div>
 
-          <p className="text-center lg:text-left text-sage-field mt-4">
-            Sudah punya akun?{' '}
-            <Link to="/login" className="text-forest-canopy font-bold hover:underline">
-              Masuk di sini
-            </Link>
-          </p>
+          <div className={styles.field}>
+            <label className={styles.fieldLabel} htmlFor="nama_peternakan">
+              Nama peternakan
+            </label>
+
+            <div className={styles.inputWrap}>
+              <Building2
+                className={styles.inputIcon}
+                size={17}
+                strokeWidth={1.8}
+              />
+
+              <input
+                className={styles.input}
+                id="nama_peternakan"
+                name="nama_peternakan"
+                type="text"
+                placeholder="Contoh: Makmur Farm"
+                value={form.nama_peternakan}
+                onChange={handleChange}
+                required
+              />
+            </div>
+          </div>
         </div>
-      </div>
 
-    </div>
-  );
+        <div className={styles.field}>
+          <label className={styles.fieldLabel} htmlFor="email">
+            Alamat email
+          </label>
+
+          <div className={styles.inputWrap}>
+            <Mail className={styles.inputIcon} size={17} strokeWidth={1.8} />
+
+            <input
+              className={styles.input}
+              id="email"
+              name="email"
+              type="email"
+              placeholder="nama@email.com"
+              value={form.email}
+              onChange={handleChange}
+              autoComplete="email"
+              required
+            />
+          </div>
+        </div>
+
+        <div className={styles.field}>
+          <label className={styles.fieldLabel} htmlFor="password">
+            Password
+          </label>
+
+          <div className={styles.inputWrap}>
+            <LockKeyhole
+              className={styles.inputIcon}
+              size={17}
+              strokeWidth={1.8}
+            />
+
+            <input
+              className={`${styles.input} ${styles.passwordInput}`}
+              id="password"
+              name="password"
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Minimal 6 karakter"
+              value={form.password}
+              onChange={handleChange}
+              autoComplete="new-password"
+              minLength={6}
+              required
+            />
+
+            <button
+              type="button"
+              className={styles.passwordToggle}
+              onClick={() => setShowPassword((current) => !current)}
+              aria-label={
+                showPassword ? 'Sembunyikan password' : 'Tampilkan password'
+              }
+            >
+              {showPassword ? (
+                <EyeOff size={18} strokeWidth={1.8} />
+              ) : (
+                <Eye size={18} strokeWidth={1.8} />
+              )}
+            </button>
+          </div>
+
+          <span className={styles.fieldHint}>
+            Gunakan minimal 6 karakter untuk password akun.
+          </span>
+        </div>
+
+        <div className={styles.field}>
+          <label className={styles.fieldLabel} htmlFor="konfirmasiPassword">
+            Konfirmasi password
+          </label>
+
+          <div className={styles.inputWrap}>
+            <LockKeyhole
+              className={styles.inputIcon}
+              size={17}
+              strokeWidth={1.8}
+            />
+
+            <input
+              className={`${styles.input} ${styles.passwordInput}`}
+              id="konfirmasiPassword"
+              name="konfirmasiPassword"
+              type={showConfirmation ? 'text' : 'password'}
+              placeholder="Masukkan ulang password"
+              value={form.konfirmasiPassword}
+              onChange={handleChange}
+              autoComplete="new-password"
+              required
+            />
+
+            <button
+              type="button"
+              className={styles.passwordToggle}
+              onClick={() => setShowConfirmation((current) => !current)}
+              aria-label={
+                showConfirmation
+                  ? 'Sembunyikan konfirmasi password'
+                  : 'Tampilkan konfirmasi password'
+              }
+            >
+              {showConfirmation ? (
+                <EyeOff size={18} strokeWidth={1.8} />
+              ) : (
+                <Eye size={18} strokeWidth={1.8} />
+              )}
+            </button>
+          </div>
+        </div>
+
+        <div className={styles.formNote}>
+          <House size={16} strokeWidth={1.8} />
+          <span>
+            Satu akun digunakan untuk mengelola satu peternakan.
+          </span>
+        </div>
+
+        {notice && (
+          <div className={styles.feedback} role="status">
+            {notice}
+          </div>
+        )}
+
+        <button type="submit" className={styles.submitButton}>
+          <span>Buat akun peternakan</span>
+          <ArrowRight size={17} strokeWidth={2} />
+        </button>
+      </form>
+
+      <p className={styles.switchPage}>
+        Sudah memiliki akun? <Link to="/login">Masuk di sini</Link>
+      </p>
+    </AuthLayout>
+  )
 }

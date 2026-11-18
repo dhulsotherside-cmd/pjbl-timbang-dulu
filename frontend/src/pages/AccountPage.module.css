@@ -1,0 +1,418 @@
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  color: #292e2a;
+  animation: accountFade 600ms ease both;
+}
+
+@keyframes accountFade {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Page heading */
+
+.pageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.eyebrow {
+  display: inline-block;
+  margin-bottom: 9px;
+  color: #71816a;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.7px;
+}
+
+.pageHeader h1 {
+  margin: 0;
+  color: #203c32;
+  font-size: clamp(27px, 3vw, 34px);
+  font-weight: 700;
+  letter-spacing: -1.3px;
+}
+
+.pageHeader p {
+  margin: 8px 0 0;
+  color: #788078;
+  font-size: 13px;
+}
+
+.editButton,
+.saveButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 11px;
+  background: #203c32;
+  color: #fff;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 180ms ease, transform 180ms ease;
+}
+
+.editButton:hover,
+.saveButton:hover {
+  background: #496b50;
+  transform: translateY(-2px);
+}
+
+/* Profile identity */
+
+.profileSection {
+  display: flex;
+  align-items: center;
+  min-height: 112px;
+  padding: 21px 24px;
+  border: 1px solid rgba(73, 107, 80, 0.13);
+  border-radius: 17px;
+  background: rgba(242, 240, 230, 0.72);
+}
+
+.profileIdentity {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+  border-radius: 15px;
+  background: #e1e7d7;
+  color: #496b50;
+}
+
+.profileLabel {
+  color: #71816a;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+}
+
+.profileIdentity h2 {
+  margin: 6px 0 3px;
+  color: #203c32;
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -0.5px;
+}
+
+.profileIdentity p {
+  margin: 0;
+  color: #858d84;
+  font-size: 11px;
+}
+
+/* Information panels */
+
+.accountSection {
+  padding: 23px 24px 25px;
+  border: 1px solid rgba(73, 107, 80, 0.13);
+  border-radius: 17px;
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.sectionHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+
+.sectionHeading h2,
+.securitySection h2,
+.logoutSection h2 {
+  margin: 0;
+  color: #203c32;
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: -0.4px;
+}
+
+.sectionHeading p,
+.logoutSection p {
+  margin: 6px 0 0;
+  color: #858b80;
+  font-size: 11px;
+}
+
+.fieldGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 19px 22px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+}
+
+.fieldLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #35483b;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.fieldLabel svg {
+  color: #71816a;
+}
+
+.field input {
+  width: 100%;
+  min-height: 43px;
+  padding: 0 13px;
+  border: 1px solid #d7d8cc;
+  border-radius: 9px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.55);
+  color: #292e2a;
+  font-family: inherit;
+  font-size: 12px;
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.field input:read-only {
+  background: rgba(242, 240, 230, 0.55);
+  color: #596459;
+}
+
+.field input:not(:read-only):focus {
+  border-color: #496b50;
+  box-shadow: 0 0 0 3px rgba(73, 107, 80, 0.1);
+}
+
+/* Form actions */
+
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 17px;
+}
+
+.cancelButton {
+  min-height: 42px;
+  padding: 0 18px;
+  border: 1px solid #d7d8cc;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.65);
+  color: #596459;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 180ms ease;
+}
+
+.cancelButton:hover {
+  background: #f2f0e6;
+}
+
+/* Account information */
+
+.securitySection {
+  padding: 20px 24px;
+  border: 1px solid rgba(73, 107, 80, 0.12);
+  border-radius: 15px;
+  background: rgba(226, 233, 216, 0.55);
+}
+
+.securitySection h2 {
+  font-size: 14px;
+}
+
+.securitySection p {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+  color: #687468;
+  font-size: 11px;
+}
+
+.securitySection p svg {
+  color: #71816a;
+}
+
+/* Logout */
+
+.logoutSection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 21px 24px;
+  border: 1px solid rgba(181, 71, 71, 0.13);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.54);
+}
+
+.logoutSection h2 {
+  font-size: 14px;
+}
+
+.logoutSection p {
+  line-height: 1.5;
+}
+
+.logoutSection button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 39px;
+  padding: 0 14px;
+  border: 1px solid rgba(181, 71, 71, 0.2);
+  border-radius: 10px;
+  background: #fff;
+  color: #a34e4e;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 180ms ease;
+}
+
+.logoutSection button:hover {
+  background: #fbefed;
+}
+
+/* Responsive */
+
+@media (max-width: 700px) {
+  .page {
+    gap: 17px;
+  }
+
+  .pageHeader {
+    align-items: flex-start;
+  }
+
+  .pageHeader p {
+    max-width: 230px;
+    line-height: 1.5;
+  }
+
+  .editButton {
+    min-height: 38px;
+    padding: 0 11px;
+    font-size: 10px;
+  }
+
+  .profileSection {
+    min-height: 96px;
+    padding: 17px;
+    border-radius: 14px;
+  }
+
+  .avatar {
+    width: 45px;
+    height: 45px;
+    border-radius: 12px;
+  }
+
+  .profileIdentity h2 {
+    font-size: 16px;
+  }
+
+  .accountSection {
+    padding: 19px 16px 21px;
+    border-radius: 15px;
+  }
+
+  .fieldGrid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .formActions {
+    gap: 8px;
+  }
+
+  .formActions button {
+    flex: 1;
+  }
+
+  .securitySection,
+  .logoutSection {
+    padding: 18px 16px;
+  }
+
+  .logoutSection {
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 420px) {
+  .logoutSection {
+    flex-direction: column;
+  }
+
+  .logoutSection button {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page {
+    animation: none;
+  }
+}
+
+
+/* 1. Profile identity */
+.profileSection {
+  background: #ffffff;
+  border: 1px solid rgba(73, 107, 80, 0.18);
+  box-shadow: 0 3px 12px rgba(32, 60, 50, 0.035);
+}
+
+/* 2. Jarak antarpanel informasi */
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* 3. Informasi akun */
+.securitySection {
+  background: #e4e9dc;
+  border: 1px solid #d1dac8;
+}
+
+.securitySection h2 {
+  color: #203c32;
+}
+
+.securitySection p {
+  color: #596b59;
+}
+    
