@@ -1,7 +1,11 @@
 import os
+from pathlib import Path
 from typing import List, Union
 from pydantic import AnyHttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+ENV_PATH = BACKEND_DIR / ".env"
 
 
 class Settings(BaseSettings):
@@ -20,8 +24,8 @@ class Settings(BaseSettings):
         "*"
     ]
 
-    # Database Configuration (PostgreSQL / Supabase)
-    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/timbangdulu"
+    # Database Configuration (PostgreSQL Neon / Supabase / Local)
+    DATABASE_URL: str = "postgresql://<user>:<password>@<ep-pooler-host>/<dbname>?sslmode=require"
 
     # Supabase Storage Configuration
     SUPABASE_URL: str = ""
@@ -37,7 +41,7 @@ class Settings(BaseSettings):
     USE_MOCK_AI: bool = True
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=[str(ENV_PATH), ".env"],
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore"

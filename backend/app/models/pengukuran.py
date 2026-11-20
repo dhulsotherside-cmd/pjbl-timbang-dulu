@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, func
+from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -42,6 +42,11 @@ class Pengukuran(Base):
         DateTime(timezone=True),
         server_default=func.now(),
         nullable=False
+    )
+
+    # Composite index untuk query time-series pengukuran per sapi
+    __table_args__ = (
+        Index("idx_pengukuran_sapi_tanggal", "id_sapi", "tanggal_ukur"),
     )
 
     # Relasi balik ke Sapi
