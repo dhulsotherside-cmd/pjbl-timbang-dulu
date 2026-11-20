@@ -104,9 +104,12 @@ python -m app.db.init_db
 ```
 
 ### 5. Menjalankan Server Backend
+Jalankan server aplikasi secara langsung dengan:
 ```bash
-uvicorn app.main:app --reload
+python main.py
 ```
+*(Atau menggunakan perintah CLI Uvicorn secara langsung: `uvicorn app.main:app --reload --port 8000`)*
+
 Layanan akan aktif di `http://127.0.0.1:8000`.
 
 - **Interactive API Documentation (Swagger UI):** [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)

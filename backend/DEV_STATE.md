@@ -1,10 +1,10 @@
 # Developer State & Architecture Snapshot — TimbangDulu Backend
 
 **Berkas Dokumen:** `DEV_STATE.md`  
-**Status Layanan:** Operational (MVP Initial Setup - Ready for Feature Expansion)  
-**Versi Sistem:** SemVer `0.1.0`  
-**Tanggal Snapshot Terakhir:** 11 November 2026  
-**Spesialis Dokumentasi:** Senior Software Engineer & Technical Documentation Specialist  
+**Status Layanan:** Operational (MVP Setup + Neon Pooling + Route Guards & Protected Routes Active)  
+**Versi Sistem:** SemVer `0.2.2`  
+**Tanggal Snapshot Terakhir:** 20 November 2026  
+**Spesialis Dokumentasi:** Senior Full-Stack & Database Engineer  
 **Basis Rujukan:** [PRD.md](file:///C:/Users/THINKPAD/Documents/Banu/IPB/proyek/TimbangDulu/backend/PRD.md)
 
 ---
@@ -13,8 +13,10 @@
 
 | Komponen Arsitektur | Modul Implementasi | Status Operasional | Deskripsi Teknis |
 | :--- | :--- | :--- | :--- |
+| **Backend Service Runner** | `backend/main.py`<br>`backend/app/main.py` | **ACTIVE & VERIFIED** | Runner mandiri yang memungkinkan eksekusi server FastAPI cukup dengan `python main.py`. Membungkus Uvicorn programmatic runner (`127.0.0.1:8000`, `reload=True`) dengan resolusi aman `sys.path`. |
 | **Authentication & Multi-tenancy** | `app/core/security.py`<br>`app/api/deps.py`<br>`app/api/v1/auth.py` | **ACTIVE & VERIFIED** | Autentikasi berbasis JWT (`HS256`) dengan enkripsi kata sandi `bcrypt`. Dependency `get_current_user` menegakkan isolasi data multi-tenancy di mana seluruh query dibatasi pada `id_user` pengguna yang sedang login. |
-| **Database & ORM Layer** | `app/db/base.py`<br>`app/db/session.py`<br>`app/models/*`<br>`app/db/init_db.py` | **ACTIVE & VERIFIED** | Menggunakan **SQLAlchemy 2.0** DeclarativeBase dengan driver `psycopg2` & `psycopg` (v3). Connection pooling dikonfigurasi (`pool_size=10`, `max_overflow=20`, `pool_recycle=300s`, `pool_pre_ping=True`) untuk resiliensi Supabase Free Tier. Model mencakup `users`, `jenis_sapi`, `sapi`, dan `pengukuran`. |
+| **Database & ORM Layer** | `app/db/base.py`<br>`app/db/session.py`<br>`app/models/*`<br>`app/db/init_db.py` | **ACTIVE & VERIFIED** | Menggunakan **SQLAlchemy 2.0** DeclarativeBase dengan driver `psycopg2-binary` & `psycopg` (v3). Connection pooling dikonfigurasi (`pool_size=10`, `max_overflow=20`, `pool_recycle=300s`, `pool_pre_ping=True`, `connect_timeout=15s`) untuk ketahanan terhadap perilaku *scale-to-zero* dan auto-suspend bawaan **PostgreSQL Neon**. Model mencakup `users`, `jenis_sapi`, `sapi`, dan `pengukuran` dengan composite time-series index. |
+| **Frontend Auth & Route Guards** | `frontend/src/components/auth/ProtectedRoute.jsx`<br>`frontend/src/components/auth/GuestRoute.jsx`<br>`frontend/src/pages/LoginPage.jsx`<br>`frontend/src/pages/AccountPage.jsx`<br>`frontend/src/context/AuthContext.jsx`<br>`frontend/src/services/api.js` | **ACTIVE & VERIFIED** | Keamanan navigasi penuh: `ProtectedRoute` mengisolasi rute internal (`/dashboard`, `/app/*`), `GuestRoute` mengalihkan pengguna terautentikasi dari halaman login, Axios 401 response interceptor menangani token expired, dan tombol logout dilengkapi modal konfirmasi. |
 | **Object Storage (Supabase)** | `app/services/supabase_storage.py` | **ACTIVE & VERIFIED** | Mengelola upload berkas citra sapi ke Supabase Storage Bucket `cattle-images`. Dilengkapi validasi format MIME type (`image/jpeg`, `image/png`, `image/webp`), sanitasi nama acak berbasis `uuid4().ext`, dan fallback adapter saat mode mock/lokal aktif. |
 | **Estimasi & Computer Vision Layer** | `app/services/ai_inference.py` | **ACTIVE (MOCK MODE)** | Kelas `CattleVisionService` terpasang dengan toggle `USE_MOCK_AI=True`. Menghasilkan estimasi bobot realistis ($60.0 - 450.0\text{ kg}$) berdasarkan usia bulan dan jenis kelamin ternak dengan latensi simulasi $0.5 - 0.8\text{ detik}$. Siap diganti modul ONNX Runtime saat bobot model diserahkan. |
 | **Kalkulator PBH (ADG)** | `app/services/pbh_calculator.py` | **ACTIVE & VERIFIED** | Menghitung Perkembangan Bobot Harian $\text{PBH} = \frac{\Delta\text{Bobot}}{\Delta\text{Hari}}$. Memiliki guardrail $\Delta\text{Hari} > 0$ (`HTTP 400`), penentuan status pertumbuhan (`NORMAL` / `PERINGATAN_PENURUNAN`), serta saran evaluasi pakan jika PBH negatif. |
@@ -92,13 +94,19 @@ Dikelola melalui berkas `.env` dan diakses melalui `app/core/config.py` (Pydanti
 
 Berikut adalah daftar periksa terstruktur untuk sesi prompt dan sprint pengembangan berikutnya:
 
-- [ ] **Data Seeding & Mock Scenarios (`seed_data.py`):**
-  - Buat skrip seed mandiri yang menginstansiasi 2 akun peternak dummy (misal: `peternak_makmur` dan `peternak_berkah`), masing-masing dengan 3-5 ekor sapi dan data historis pengukuran bertahap (rentang 14 - 30 hari).
-  - Berguna agar tim frontend dapat langsung melakukan styling dashboard tanpa memulai dari formulir kosong.
+- [x] **Database Seeding & Test Credentials (`init_db.py`):**
+  - Implementasi inisialisasi skema tabel, 8 ras jenis sapi master, dan 1 akun peternak dummy pengujian (`peternak_demo` / `Password123!`).
+
+- [x] **Frontend Authentication & State Integration:**
+  - Koneksi form login React (`LoginPage.jsx`) ke endpoint `POST /api/v1/auth/login`.
+  - Penyimpanan JWT token pada `localStorage`, Axios request interceptor otomatis, dan auto-redirect ke dashboard.
 
 - [ ] **Endpoint Tren Pertumbuhan & Analisis Grafik (`GET /api/v1/pengukuran/history/{id_sapi}`):**
   - Implementasikan endpoint agregasi analitik yang mengembalikan ringkasan statistik (bobot awal masuk, bobot saat ini, total gain, rata-rata ADG keseluruhan, target panen/jual).
   - Format output dioptimasi untuk konsumsi pustaka visualisasi grafik frontend (Chart.js / Recharts).
+
+- [ ] **Data Seeding Lanjutan Multi-Sapi & Histori Pengukuran:**
+  - Menambahkan variasi histori pengukuran bertahap (14-30 hari) pada akun peternak demo untuk uji coba visualisasi grafik bobot di dashboard frontend.
 
 - [ ] **Ekspansi CI/CD & Automated Pipeline:**
   - Tambahkan konfigurasi GitHub Actions (`.github/workflows/backend-ci.yml`) untuk menjalankan linting (`ruff`/`flake8`) dan automated test (`pytest`) pada setiap pull request.

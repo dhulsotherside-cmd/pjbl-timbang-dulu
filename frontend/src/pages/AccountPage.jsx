@@ -1,4 +1,4 @@
-import {useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   UserRound, Building2, Phone, MapPin, CalendarDays, AtSign, Pencil, LogOut,
 } from 'lucide-react'
@@ -10,26 +10,44 @@ import {
 } from '../mocks/accountData'
 import styles from './AccountPage.module.css'
 
-
-
 export default function AccountPage() {
+  const { user, isLoading, logout } = useAuth()
+  const navigate = useNavigate()
 
-  const { isLoading, logout } = useAuth()
-const navigate = useNavigate()
-  const [profile, setProfile] = useState(() => loadAccountProfile())
+  const [profile, setProfile] = useState(() => {
+    const cached = loadAccountProfile()
+    if (user) {
+      return { ...cached, ...user }
+    }
+    return cached
+  })
 
   const [isEditing, setIsEditing] = useState(false)
-const handleLogout = () => {
-  const confirmed = window.confirm(
-    'Apakah Anda yakin ingin keluar dari akun?'
-  )
+  const [showLogoutModal, setShowLogoutModal] = useState(false)
 
-  if (!confirmed) return
+  // Tutup modal jika tombol Escape ditekan
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setShowLogoutModal(false)
+      }
+    }
+    if (showLogoutModal) {
+      window.addEventListener('keydown', handleKeyDown)
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [showLogoutModal])
 
-  logout()
-  navigate('/')
-}
-  
+  const handleConfirmLogout = () => {
+    // 1. Bersihkan session auth global dan token di client storage
+    logout()
+    localStorage.removeItem('timbangdulu_token')
+    setShowLogoutModal(false)
+
+    // 2. Navigasi kembali ke halaman Login dengan replace: true
+    // agar pengguna tidak dapat menekan tombol 'Back' browser
+    navigate('/login', { replace: true })
+  }
 
   const handleChange = (event) => {
     const { name, value } = event.target
@@ -41,12 +59,11 @@ const handleLogout = () => {
   }
 
   const handleSave = (event) => {
-  event.preventDefault()
-  saveAccountProfile(profile)
-  window.dispatchEvent(new Event('timbangdulu-profile-updated'))
-  setIsEditing(false)
-
-}
+    event.preventDefault()
+    saveAccountProfile(profile)
+    window.dispatchEvent(new Event('timbangdulu-profile-updated'))
+    setIsEditing(false)
+  }
 
   const formatDate = (date) => {
     if (!date) return '-'
@@ -194,9 +211,9 @@ const handleLogout = () => {
               type="button"
               className={styles.cancelButton}
               onClick={() => {
-  setIsEditing(false)
-  setProfile(loadAccountProfile())
-}}
+                setIsEditing(false)
+                setProfile(loadAccountProfile())
+              }}
             >
               Batal
             </button>
@@ -224,11 +241,49 @@ const handleLogout = () => {
           <p>Akhiri sesi penggunaan TimbangDulu.</p>
         </div>
 
-        <button type="button" onClick={handleLogout}>
+        <button type="button" onClick={() => setShowLogoutModal(true)}>
           <LogOut size={17} />
-          Keluar
+          Keluar Akun
         </button>
       </section>
+
+      {/* Modal Dialog Konfirmasi Logout */}
+      {showLogoutModal && (
+        <div
+          className={styles.modalOverlay}
+          onClick={() => setShowLogoutModal(false)}
+        >
+          <div
+            className={styles.modalCard}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="logout-title"
+          >
+            <div className={styles.modalIconWrap}>
+              <LogOut size={24} />
+            </div>
+            <h3 id="logout-title">Konfirmasi Keluar Akun</h3>
+            <p>Apakah Anda yakin ingin keluar dari akun TimbangDulu?</p>
+            <div className={styles.modalActions}>
+              <button
+                type="button"
+                className={styles.modalCancelButton}
+                onClick={() => setShowLogoutModal(false)}
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                className={styles.modalConfirmButton}
+                onClick={handleConfirmLogout}
+              >
+                Ya, Keluar Akun
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

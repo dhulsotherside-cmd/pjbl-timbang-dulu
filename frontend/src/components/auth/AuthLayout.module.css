@@ -395,6 +395,19 @@
   line-height: 1.55;
 }
 
+.feedbackError {
+  padding: 12px 14px;
+  border: 1px solid #F3C4C4;
+  border-radius: 9px;
+  background: #FDF2F2;
+  color: #9B2C2C;
+  font-size: 0.76rem;
+  line-height: 1.55;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 /* Supporting content */
 
 .formNote {

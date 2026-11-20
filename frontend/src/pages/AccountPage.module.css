@@ -415,4 +415,111 @@ form {
 .securitySection p {
   color: #596b59;
 }
+
+/* Modal Konfirmasi Logout */
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(32, 60, 50, 0.45);
+  backdrop-filter: blur(4px);
+  animation: fadeIn 180ms ease;
+}
+
+.modalCard {
+  width: 100%;
+  max-width: 400px;
+  padding: 28px 24px 24px;
+  border-radius: 16px;
+  background: #ffffff;
+  border: 1px solid #e3e8dc;
+  box-shadow: 0 16px 36px rgba(32, 60, 50, 0.16);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  animation: scaleUp 200ms ease;
+}
+
+.modalIconWrap {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #fdf2f2;
+  color: #c93b2b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+
+.modalCard h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #203c32;
+}
+
+.modalCard p {
+  margin: 0 0 24px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #6a7468;
+}
+
+.modalActions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.modalCancelButton {
+  flex: 1;
+  min-height: 44px;
+  border-radius: 9px;
+  border: 1px solid #d8ded0;
+  background: #f7f9f4;
+  color: #496b50;
+  font-weight: 600;
+  font-size: 13.5px;
+  cursor: pointer;
+  transition: all 180ms ease;
+}
+
+.modalCancelButton:hover {
+  background: #eef2e7;
+  border-color: #cbd5c1;
+}
+
+.modalConfirmButton {
+  flex: 1;
+  min-height: 44px;
+  border-radius: 9px;
+  border: 1px solid #c93b2b;
+  background: #c93b2b;
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 13.5px;
+  cursor: pointer;
+  transition: all 180ms ease;
+}
+
+.modalConfirmButton:hover {
+  background: #b33224;
+  border-color: #b33224;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleUp {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
     
