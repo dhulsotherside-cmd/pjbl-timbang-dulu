@@ -1,10 +1,10 @@
 # Developer State & Architecture Snapshot — TimbangDulu Backend
 
 **Berkas Dokumen:** `DEV_STATE.md`  
-**Status Layanan:** Operational (MVP Setup + Neon Pooling + Route Guards & Protected Routes Active)  
-**Versi Sistem:** SemVer `0.2.2`  
-**Tanggal Snapshot Terakhir:** 20 November 2026  
-**Spesialis Dokumentasi:** Senior Full-Stack & Database Engineer  
+**Status Layanan:** Operational (MVP Setup + Neon Pooling + Route Guards + User Registration & Auth Active)  
+**Versi Sistem:** SemVer `0.3.0`  
+**Tanggal Snapshot Terakhir:** 22 November 2026  
+**Spesialis Dokumentasi:** Senior Backend Engineer & Database Architect  
 **Basis Rujukan:** [PRD.md](file:///C:/Users/THINKPAD/Documents/Banu/IPB/proyek/TimbangDulu/backend/PRD.md)
 
 ---
@@ -14,9 +14,9 @@
 | Komponen Arsitektur | Modul Implementasi | Status Operasional | Deskripsi Teknis |
 | :--- | :--- | :--- | :--- |
 | **Backend Service Runner** | `backend/main.py`<br>`backend/app/main.py` | **ACTIVE & VERIFIED** | Runner mandiri yang memungkinkan eksekusi server FastAPI cukup dengan `python main.py`. Membungkus Uvicorn programmatic runner (`127.0.0.1:8000`, `reload=True`) dengan resolusi aman `sys.path`. |
-| **Authentication & Multi-tenancy** | `app/core/security.py`<br>`app/api/deps.py`<br>`app/api/v1/auth.py` | **ACTIVE & VERIFIED** | Autentikasi berbasis JWT (`HS256`) dengan enkripsi kata sandi `bcrypt`. Dependency `get_current_user` menegakkan isolasi data multi-tenancy di mana seluruh query dibatasi pada `id_user` pengguna yang sedang login. |
+| **Authentication & Multi-tenancy** | `app/core/security.py`<br>`app/api/deps.py`<br>`app/api/v1/auth.py` | **ACTIVE & VERIFIED** | Autentikasi berbasis JWT (`HS256`) dengan enkripsi kata sandi `bcrypt`. Endpoint registrasi `POST /api/v1/auth/register` terintegrasi tabel `users` Neon PostgreSQL dengan proteksi duplikasi username dan rollback otomatis. Dependency `get_current_user` menegakkan isolasi multi-tenancy. |
 | **Database & ORM Layer** | `app/db/base.py`<br>`app/db/session.py`<br>`app/models/*`<br>`app/db/init_db.py` | **ACTIVE & VERIFIED** | Menggunakan **SQLAlchemy 2.0** DeclarativeBase dengan driver `psycopg2-binary` & `psycopg` (v3). Connection pooling dikonfigurasi (`pool_size=10`, `max_overflow=20`, `pool_recycle=300s`, `pool_pre_ping=True`, `connect_timeout=15s`) untuk ketahanan terhadap perilaku *scale-to-zero* dan auto-suspend bawaan **PostgreSQL Neon**. Model mencakup `users`, `jenis_sapi`, `sapi`, dan `pengukuran` dengan composite time-series index. |
-| **Frontend Auth & Route Guards** | `frontend/src/components/auth/ProtectedRoute.jsx`<br>`frontend/src/components/auth/GuestRoute.jsx`<br>`frontend/src/pages/LoginPage.jsx`<br>`frontend/src/pages/AccountPage.jsx`<br>`frontend/src/context/AuthContext.jsx`<br>`frontend/src/services/api.js` | **ACTIVE & VERIFIED** | Keamanan navigasi penuh: `ProtectedRoute` mengisolasi rute internal (`/dashboard`, `/app/*`), `GuestRoute` mengalihkan pengguna terautentikasi dari halaman login, Axios 401 response interceptor menangani token expired, dan tombol logout dilengkapi modal konfirmasi. |
+| **Frontend Auth & Route Guards** | `frontend/src/components/auth/ProtectedRoute.jsx`<br>`frontend/src/components/auth/GuestRoute.jsx`<br>`frontend/src/pages/RegisterPage.jsx`<br>`frontend/src/pages/LoginPage.jsx`<br>`frontend/src/pages/AccountPage.jsx`<br>`frontend/src/context/AuthContext.jsx`<br>`frontend/src/services/api.js` | **ACTIVE & VERIFIED** | Keamanan navigasi penuh: Form registrasi React tersambung ke backend API dengan validasi, disable submit, notifikasi status ramah pengguna, auto-redirect ke login, dan route guard lengkap. |
 | **Object Storage (Supabase)** | `app/services/supabase_storage.py` | **ACTIVE & VERIFIED** | Mengelola upload berkas citra sapi ke Supabase Storage Bucket `cattle-images`. Dilengkapi validasi format MIME type (`image/jpeg`, `image/png`, `image/webp`), sanitasi nama acak berbasis `uuid4().ext`, dan fallback adapter saat mode mock/lokal aktif. |
 | **Estimasi & Computer Vision Layer** | `app/services/ai_inference.py` | **ACTIVE (MOCK MODE)** | Kelas `CattleVisionService` terpasang dengan toggle `USE_MOCK_AI=True`. Menghasilkan estimasi bobot realistis ($60.0 - 450.0\text{ kg}$) berdasarkan usia bulan dan jenis kelamin ternak dengan latensi simulasi $0.5 - 0.8\text{ detik}$. Siap diganti modul ONNX Runtime saat bobot model diserahkan. |
 | **Kalkulator PBH (ADG)** | `app/services/pbh_calculator.py` | **ACTIVE & VERIFIED** | Menghitung Perkembangan Bobot Harian $\text{PBH} = \frac{\Delta\text{Bobot}}{\Delta\text{Hari}}$. Memiliki guardrail $\Delta\text{Hari} > 0$ (`HTTP 400`), penentuan status pertumbuhan (`NORMAL` / `PERINGATAN_PENURUNAN`), serta saran evaluasi pakan jika PBH negatif. |
@@ -81,12 +81,14 @@ Dikelola melalui berkas `.env` dan diakses melalui `app/core/config.py` (Pydanti
 
 ## 4. Status Pengujian Otomatis (Automated Test Suite)
 
-- **Total Test Cases:** 12 passed, 0 failed.
+- **Total Test Cases:** 17 passed, 0 failed.
 - **Lokasi Berkas Uji:** `tests/`
+  - `tests/test_registration.py`: Pengujian siklus registrasi lengkap (status 201, verifikasi hash bcrypt di DB, penolakan duplikasi 400, fallback email frontend, validasi panjang password).
   - `tests/test_pbh.py`: Validasi rumus ADG, status alert penurunan, dan guardrail $\Delta\text{Hari} \le 0$.
   - `tests/test_security.py`: Pengujian hashing password bcrypt dan siklus JWT sign-decode.
   - `tests/test_ai_inference.py`: Pengujian latensi simulasi dan rentang bobot $60 - 450\text{ kg}$.
   - `tests/test_api_integration.py`: Alur menyeluruh registrasi $\rightarrow$ login $\rightarrow$ isolasi multi-tenant $\rightarrow$ penambahan sapi $\rightarrow$ prediksi 2 titik $\rightarrow$ inspeksi riwayat & PBH.
+  - `tests/verify_neon_registration.py`: Skrip verifikasi live end-to-end ke database Neon PostgreSQL aktif.
 
 ---
 
@@ -100,6 +102,10 @@ Berikut adalah daftar periksa terstruktur untuk sesi prompt dan sprint pengemban
 - [x] **Frontend Authentication & State Integration:**
   - Koneksi form login React (`LoginPage.jsx`) ke endpoint `POST /api/v1/auth/login`.
   - Penyimpanan JWT token pada `localStorage`, Axios request interceptor otomatis, dan auto-redirect ke dashboard.
+
+- [x] **User Registration Flow & Neon PostgreSQL Persistence:**
+  - Endpoint `POST /api/v1/auth/register` dengan validasi Pydantic, proteksi duplikasi username, hashing bcrypt, transaksi rollback aman, dan response tanpa password hash.
+  - Form registrasi frontend (`RegisterPage.jsx`) tersambung ke endpoint dengan state loading, penanganan error, dan auto-redirect ke login.
 
 - [ ] **Endpoint Tren Pertumbuhan & Analisis Grafik (`GET /api/v1/pengukuran/history/{id_sapi}`):**
   - Implementasikan endpoint agregasi analitik yang mengembalikan ringkasan statistik (bobot awal masuk, bobot saat ini, total gain, rata-rata ADG keseluruhan, target panen/jual).

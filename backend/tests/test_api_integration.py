@@ -2,53 +2,12 @@ import io
 import pytest
 from datetime import date, timedelta
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
-from app.api.deps import get_db
-from app.db.base import Base
-from app.main import app
 from app.models.jenis_sapi import JenisSapi
 from app.models.pengukuran import Pengukuran
 from app.models.sapi import Sapi
 from app.models.user import User
-
-# Gunakan database in-memory SQLite khusus untuk pengujian terisolasi
-SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
-
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-
-def override_get_db():
-    db = TestingSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-
-app.dependency_overrides[get_db] = override_get_db
-
-client = TestClient(app)
-
-
-@pytest.fixture(autouse=True)
-def setup_and_teardown_db():
-    Base.metadata.create_all(bind=engine)
-    # Seed jenis sapi
-    with TestingSessionLocal() as db:
-        jenis_list = ["Simental", "Limousin", "Brahman", "PO", "Bali"]
-        for j in jenis_list:
-            db.add(JenisSapi(nama_jenis=j))
-        db.commit()
-    yield
-    Base.metadata.drop_all(bind=engine)
+from tests.conftest import client, TestingSessionLocal
 
 
 def test_auth_and_user_flow():

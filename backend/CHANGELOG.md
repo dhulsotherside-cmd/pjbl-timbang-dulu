@@ -5,6 +5,32 @@ Format pencatatan berpedoman pada [Keep a Changelog](https://keepachangelog.com/
 
 ---
 
+## [0.3.0] - 2026-11-22 — User Registration Flow & Neon PostgreSQL Persistence
+
+Implementasi penuh fungsionalitas registrasi pengguna baru (*user registration*) pada backend FastAPI + SQLAlchemy dengan persistensi data ke tabel `users` PostgreSQL Neon, enkripsi password via `bcrypt`, pencegahan duplikasi username, integrasi ke antarmuka formulir registrasi React tanpa mengubah styling visual, dan kompatibilitas login instan.
+
+### Added
+- **Pydantic Validation & DTO Enhancement (`app/schemas/user.py`):**
+  - Implementasi schema `UserCreate` yang dilengkapi `field_validator` untuk pembersihan whitespace (*trim*) pada field `username`, `nama_user`, `nama_peternakan`, serta panjang password minimal 6 karakter.
+  - Implementasi `model_validator` fleksibel yang mendukung input `email` dari form frontend sebagai fallback nilai `username` tanpa menghasilkan error validasi 422.
+  - Pembaruan schema `UserRegisterData` dan `RegisterResponse` yang mengembalikan rincian akun baru (`id_user`, `username`, `nama_user`, `nama_peternakan`, `alamat`, `no_telp`, `created_at`) dengan jaminan 100% tidak pernah menyertakan `password_hash` atau kredensial sensitif.
+- **Robust Database Registration Endpoint (`app/api/v1/auth.py`):**
+  - Penyempurnaan endpoint `POST /api/v1/auth/register` dengan status `201 Created`.
+  - Pengecekan duplikasi `username` sebelum proses persistensi yang mengembalikan `400 Bad Request` informatif jika username telah digunakan.
+  - Enkripsi password plain-text menggunakan utilitas `get_password_hash` (`bcrypt`) yang identik dengan proses verifikasi login.
+  - Penanganan transaksi database yang kokoh dengan blok `try ... except IntegrityError ... except SQLAlchemyError` disertai `db.rollback()` otomatis guna mencegah deadlock atau kegagalan session pooling Neon.
+- **Frontend Form Wiring & Seamless Redirect (`frontend/src/pages/RegisterPage.jsx` & `LoginPage.jsx`):**
+  - Mengganti input field email pada form registrasi dengan input `username` (label "Username", icon `AtSign`, placeholder "Contoh: peternak_makmur", validasi minimal 3 karakter).
+  - Penyambungan form submit registrasi ke API backend `POST /api/v1/auth/register` via Axios service `api.js` tanpa mengubah komponen visual, tata letak, maupun berkas CSS.
+  - Penanganan state pengiriman (`isSubmitting`), proteksi dobel submit, dan visual alert error ramah pengguna (`styles.feedbackError` dan `styles.feedback`).
+  - Auto-redirect ke `/login` setelah registrasi sukses dengan menyertakan state navigasi username dan pesan sukses untuk pre-filling form login.
+- **End-to-End Automated & Live Verification Suite:**
+  - Pembuatan modul test terdedikasi `tests/test_registration.py` (5 skenario pengujian: registrasi sukses, hash check, duplikasi username, fallback email, dan validasi password panjang minimal).
+  - Skrip pengujian langsung terhadap database Neon PostgreSQL aktif (`tests/verify_neon_registration.py`) yang memvalidasi siklus penuh registrasi -> inspeksi hash di Neon -> uji duplikasi 400 -> login dengan JWT -> verifikasi `/auth/me` -> pembersihan data uji.
+  - Pembuatan konfigurasi `tests/conftest.py` untuk isolasi SQLite in-memory test suite yang kini mencapai total 17/17 tests passed.
+
+---
+
 ## [0.2.2] - 2026-11-20 — Route Guard (ProtectedRoute) & Reverse Guard Implementation
 
 Peningkatan keamanan navigasi pada Frontend React dengan menerapkan mekanisme pembatasan rute internal (*route guards*) dan pencegahan akses guest tanpa token.

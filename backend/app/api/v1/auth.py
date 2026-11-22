@@ -1,5 +1,6 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
@@ -29,36 +30,66 @@ def register(
     db: Session = Depends(get_db)
 ) -> RegisterResponse:
     """
-    Mendaftarkan pengguna peternak baru ke dalam sistem.
-    - Validasi keunikan username.
-    - Password dienkripsi dengan algoritma bcrypt.
+    Mendaftarkan pengguna peternak baru ke dalam sistem:
+    1. Validasi keunikan username (400 Bad Request jika sudah digunakan).
+    2. Hashing password plain-text dengan algoritma bcrypt.
+    3. Simpan record pengguna ke database Neon PostgreSQL.
+    4. Tangani potensi error transaksi database dengan rollback otomatis.
+    5. Kembalikan response 201 Created dengan data user baru tanpa password_hash.
     """
-    existing_user = db.query(User).filter(User.username == user_in.username).first()
+    cleaned_username = user_in.username.strip()
+
+    # 1. Cek duplikasi username
+    existing_user = db.query(User).filter(User.username == cleaned_username).first()
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Username '{user_in.username}' sudah digunakan. Silakan pilih username lain."
+            detail=f"Username '{cleaned_username}' sudah digunakan. Silakan pilih username lain."
         )
 
-    db_user = User(
-        username=user_in.username,
-        password_hash=get_password_hash(user_in.password),
-        nama_user=user_in.nama_user,
-        nama_peternakan=user_in.nama_peternakan,
-        alamat=user_in.alamat,
-        no_telp=user_in.no_telp
-    )
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
+    # 2. Hash password plain-text menggunakan utilitas bcrypt
+    hashed_password = get_password_hash(user_in.password)
 
+    # 3. Buat instance model User baru
+    db_user = User(
+        username=cleaned_username,
+        password_hash=hashed_password,
+        nama_user=user_in.nama_user.strip(),
+        nama_peternakan=user_in.nama_peternakan.strip() if user_in.nama_peternakan else None,
+        alamat=user_in.alamat.strip() if user_in.alamat else None,
+        no_telp=user_in.no_telp.strip() if user_in.no_telp else None
+    )
+
+    # 4. Transaksi database dengan penanganan rollback
+    try:
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Username '{cleaned_username}' sudah terdaftar dalam sistem."
+        )
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Terjadi kegagalan saat menyimpan data pengguna baru ke database."
+        )
+
+    # 5. Response sukses 201 Created
     return RegisterResponse(
         status="success",
         message="Pendaftaran berhasil",
         data=UserRegisterData(
             id_user=db_user.id_user,
             username=db_user.username,
-            nama_peternakan=db_user.nama_peternakan
+            nama_user=db_user.nama_user,
+            nama_peternakan=db_user.nama_peternakan,
+            alamat=db_user.alamat,
+            no_telp=db_user.no_telp,
+            created_at=db_user.created_at
         )
     )
 
@@ -103,7 +134,8 @@ async def login(
             detail="Field 'username' dan 'password' wajib diisi."
         )
 
-    user = db.query(User).filter(User.username == username).first()
+    cleaned_username = username.strip()
+    user = db.query(User).filter(User.username == cleaned_username).first()
     if not user or not verify_password(password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

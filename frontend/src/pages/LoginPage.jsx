@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   ArrowRight,
   Eye,
@@ -16,12 +16,14 @@ import { useAuth } from '../context/useAuth'
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { login } = useAuth()
 
   const [showPassword, setShowPassword] = useState(false)
-  const [username, setUsername] = useState('')
+  const [username, setUsername] = useState(location.state?.registeredUsername || '')
   const [password, setPassword] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
+  const [successNotice, setSuccessNotice] = useState(location.state?.message || '')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleSubmit = async (event) => {
@@ -142,6 +144,12 @@ export default function LoginPage() {
             </button>
           </div>
         </div>
+
+        {successNotice && (
+          <div className={styles.feedback} role="status">
+            <span>{successNotice}</span>
+          </div>
+        )}
 
         {errorMessage && (
           <div className={styles.feedbackError} role="alert">

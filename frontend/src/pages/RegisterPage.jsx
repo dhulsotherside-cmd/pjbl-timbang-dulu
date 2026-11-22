@@ -1,33 +1,36 @@
-
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
   ArrowRight,
   Eye,
   EyeOff,
   Building2,
   UserRound,
-  Mail,
+  AtSign,
   LockKeyhole,
   House,
 } from 'lucide-react'
 
 import AuthLayout from '../components/auth/AuthLayout'
 import styles from '../components/auth/AuthLayout.module.css'
+import api from '../services/api'
 
 const initialForm = {
   nama_user: '',
   nama_peternakan: '',
-  email: '',
+  username: '',
   password: '',
   konfirmasiPassword: '',
 }
 
 export default function RegisterPage() {
+  const navigate = useNavigate()
   const [form, setForm] = useState(initialForm)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [notice, setNotice] = useState('')
+  const [errorMessage, setErrorMessage] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleChange = (event) => {
     const { name, value } = event.target
@@ -38,32 +41,97 @@ export default function RegisterPage() {
     }))
 
     setNotice('')
+    setErrorMessage('')
   }
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
+    setNotice('')
+    setErrorMessage('')
+
+    const trimmedName = form.nama_user.trim()
+    const trimmedFarm = form.nama_peternakan.trim()
+    const trimmedUsername = form.username.trim()
+
+    if (!trimmedName) {
+      setErrorMessage('Nama admin wajib diisi.')
+      return
+    }
+
+    if (!trimmedFarm) {
+      setErrorMessage('Nama peternakan wajib diisi.')
+      return
+    }
+
+    if (!trimmedUsername) {
+      setErrorMessage('Username akun wajib diisi.')
+      return
+    }
+
+    if (trimmedUsername.length < 3) {
+      setErrorMessage('Username minimal harus terdiri dari 3 karakter.')
+      return
+    }
 
     if (form.password.length < 6) {
-      setNotice('Password minimal harus terdiri dari 6 karakter.')
+      setErrorMessage('Password minimal harus terdiri dari 6 karakter.')
       return
     }
 
     if (form.password !== form.konfirmasiPassword) {
-      setNotice('Konfirmasi password belum cocok. Periksa kembali.')
+      setErrorMessage('Konfirmasi password belum cocok. Periksa kembali.')
       return
     }
 
-    setNotice(
-      'Form registrasi sudah siap. Proses pendaftaran akan diaktifkan setelah API backend tersedia.'
-    )
+    setIsSubmitting(true)
+
+    try {
+      const payload = {
+        username: trimmedUsername,
+        password: form.password,
+        nama_user: trimmedName,
+        nama_peternakan: trimmedFarm,
+      }
+
+      await api.post('/auth/register', payload)
+
+      setNotice('Pendaftaran berhasil! Mengalihkan ke halaman login...')
+      setTimeout(() => {
+        navigate('/login', {
+          state: {
+            registeredUsername: trimmedUsername,
+            message: 'Akun berhasil dibuat. Silakan masuk menggunakan akun baru Anda.',
+          },
+        })
+      }, 1200)
+    } catch (err) {
+      console.error('Registration error:', err)
+      if (err.response?.status === 400 || err.response?.status === 409) {
+        setErrorMessage(
+          err.response?.data?.detail || 'Username sudah digunakan. Silakan gunakan username lain.'
+        )
+      } else if (err.response?.data?.detail) {
+        setErrorMessage(
+          typeof err.response.data.detail === 'string'
+            ? err.response.data.detail
+            : 'Data pendaftaran tidak valid.'
+        )
+      } else if (err.message === 'Network Error') {
+        setErrorMessage('Tidak dapat terhubung ke server backend (Network Error). Pastikan server FastAPI aktif.')
+      } else {
+        setErrorMessage('Terjadi kendala saat proses pendaftaran. Silakan coba lagi beberapa saat lagi.')
+      }
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
     <AuthLayout
-  title="Mulai kelola peternakan Anda."
-  description="Buat akun untuk menyimpan data sapi, mencatat pengukuran, dan mengikuti perkembangannya."
-  size="wide"
->
+      title="Mulai kelola peternakan Anda."
+      description="Buat akun untuk menyimpan data sapi, mencatat pengukuran, dan mengikuti perkembangannya."
+      size="wide"
+    >
       <form className={styles.form} onSubmit={handleSubmit}>
         <div className={styles.fieldGrid}>
           <div className={styles.field}>
@@ -87,6 +155,7 @@ export default function RegisterPage() {
                 value={form.nama_user}
                 onChange={handleChange}
                 autoComplete="name"
+                disabled={isSubmitting}
                 required
               />
             </div>
@@ -112,6 +181,7 @@ export default function RegisterPage() {
                 placeholder="Contoh: Makmur Farm"
                 value={form.nama_peternakan}
                 onChange={handleChange}
+                disabled={isSubmitting}
                 required
               />
             </div>
@@ -119,22 +189,23 @@ export default function RegisterPage() {
         </div>
 
         <div className={styles.field}>
-          <label className={styles.fieldLabel} htmlFor="email">
-            Alamat email
+          <label className={styles.fieldLabel} htmlFor="username">
+            Username
           </label>
 
           <div className={styles.inputWrap}>
-            <Mail className={styles.inputIcon} size={17} strokeWidth={1.8} />
+            <AtSign className={styles.inputIcon} size={17} strokeWidth={1.8} />
 
             <input
               className={styles.input}
-              id="email"
-              name="email"
-              type="email"
-              placeholder="nama@email.com"
-              value={form.email}
+              id="username"
+              name="username"
+              type="text"
+              placeholder="Contoh: peternak_makmur"
+              value={form.username}
               onChange={handleChange}
-              autoComplete="email"
+              autoComplete="username"
+              disabled={isSubmitting}
               required
             />
           </div>
@@ -162,6 +233,7 @@ export default function RegisterPage() {
               onChange={handleChange}
               autoComplete="new-password"
               minLength={6}
+              disabled={isSubmitting}
               required
             />
 
@@ -207,6 +279,7 @@ export default function RegisterPage() {
               value={form.konfirmasiPassword}
               onChange={handleChange}
               autoComplete="new-password"
+              disabled={isSubmitting}
               required
             />
 
@@ -236,14 +309,20 @@ export default function RegisterPage() {
           </span>
         </div>
 
+        {errorMessage && (
+          <div className={styles.feedbackError} role="alert">
+            {errorMessage}
+          </div>
+        )}
+
         {notice && (
           <div className={styles.feedback} role="status">
             {notice}
           </div>
         )}
 
-        <button type="submit" className={styles.submitButton}>
-          <span>Buat akun peternakan</span>
+        <button type="submit" className={styles.submitButton} disabled={isSubmitting}>
+          <span>{isSubmitting ? 'Mendaftarkan...' : 'Buat akun peternakan'}</span>
           <ArrowRight size={17} strokeWidth={2} />
         </button>
       </form>
