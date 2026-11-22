@@ -1,16 +1,6 @@
-
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
-import {
-  getAllCattle,
-  getCattleMeasurements,
-  getLatestMeasurement,
-  updateCattleProfile,
-  archiveCattle,
-} from '../mocks/cattleData'
 import { createPortal } from 'react-dom'
-
-
 import {
   ArrowLeft,
   Beef,
@@ -23,7 +13,6 @@ import {
   VenusAndMars,
   ChartNoAxesCombined,
 } from 'lucide-react'
-
 import {
   ResponsiveContainer,
   AreaChart,
@@ -33,18 +22,21 @@ import {
   CartesianGrid,
   Tooltip,
 } from 'recharts'
-
-
-
+import cattleService from '../services/cattleService'
 import styles from './CattleDetailPage.module.css'
 
 function formatDate(date) {
   if (!date) return 'Belum ada pengukuran'
 
-  const parsedDate = new Date(date)
-
+  const parsedDate = new Date(`${date}T00:00:00`)
   if (Number.isNaN(parsedDate.getTime())) {
-    return 'Tanggal tidak valid'
+    const fallbackDate = new Date(date)
+    if (Number.isNaN(fallbackDate.getTime())) return 'Tanggal tidak valid'
+    return fallbackDate.toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    })
   }
 
   return parsedDate.toLocaleDateString('id-ID', {
@@ -53,7 +45,9 @@ function formatDate(date) {
     year: 'numeric',
   })
 }
+
 function calculateAge(months) {
+  if (!months || months < 1) return '—'
   const years = Math.floor(months / 12)
   const remainingMonths = months % 12
 
@@ -65,74 +59,132 @@ function calculateAge(months) {
 
 function CattleDetailPage() {
   const { id } = useParams()
-
-  const cow = getAllCattle().find((item) => item.id === id)
   const navigate = useNavigate()
+
+  const [cow, setCow] = useState(null)
+  const [history, setHistory] = useState([])
+  const [jenisSapiList, setJenisSapiList] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [isActionLoading, setIsActionLoading] = useState(false)
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
-  const history = getCattleMeasurements(id)
-  const latest = getLatestMeasurement(id)
+  const [showEditModal, setShowEditModal] = useState(false)
 
   const [dateA, setDateA] = useState('')
   const [dateB, setDateB] = useState('')
-  const [showEditModal, setShowEditModal] = useState(false)
-const [editForm, setEditForm] = useState({
-  breed: '',
-  gender: '',
-  ageMonths: '',
-})
-function openEditModal() {
-  setEditForm({
-    breed: cow.breed,
-    gender: cow.gender,
-    ageMonths: String(cow.ageMonths),
+  const [editForm, setEditForm] = useState({
+    breed: '',
+    gender: '',
+    ageMonths: '',
   })
 
-  setShowEditModal(true)
-}
-
-function handleSaveProfile() {
-  const age = Number(editForm.ageMonths)
-
-  if (!Number.isInteger(age) || age < 1) {
-    alert('Umur sapi harus berupa angka bulan yang valid.')
-    return
+  const loadData = async () => {
+    try {
+      setIsLoading(true)
+      const [cattleData, measurementsData, jenisData] = await Promise.all([
+        cattleService.getCattleDetail(id),
+        cattleService.getCattleMeasurements(id),
+        cattleService.getJenisSapi().catch(() => []),
+      ])
+      setCow(cattleData)
+      setHistory(measurementsData)
+      setJenisSapiList(jenisData)
+    } catch (err) {
+      console.error('Gagal memuat detail sapi:', err)
+      setCow(null)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
-  updateCattleProfile(id, {
-    breed: editForm.breed,
-    gender: editForm.gender,
-    ageMonths: age,
-  })
+  useEffect(() => {
+    loadData()
+  }, [id])
 
-  setShowEditModal(false)
-}
+  const latest = history.length > 0 ? history[0] : null
 
-function handleArchiveCattle() {
-  const result = archiveCattle(id)
-
-  if (result) {
-    setShowArchiveConfirm(false)
-    navigate('/app/sapi')
+  function openEditModal() {
+    if (!cow) return
+    setEditForm({
+      breed: cow.breed,
+      gender: cow.gender,
+      ageMonths: String(cow.ageMonths),
+    })
+    setShowEditModal(true)
   }
-}
 
-  if (!cow) {
+  async function handleSaveProfile() {
+    const age = Number(editForm.ageMonths)
+
+    if (!Number.isInteger(age) || age < 1) {
+      alert('Umur sapi harus berupa angka bulan yang valid.')
+      return
+    }
+
+    try {
+      setIsActionLoading(true)
+      const updated = await cattleService.updateCattle(id, {
+        breed: editForm.breed,
+        gender: editForm.gender,
+        ageMonths: age,
+      })
+      setCow(updated)
+      setShowEditModal(false)
+    } catch (err) {
+      console.error('Gagal menyimpan profil:', err)
+      alert(err.response?.data?.detail || 'Gagal menyimpan perubahan profil sapi.')
+    } finally {
+      setIsActionLoading(false)
+    }
+  }
+
+  async function handleArchiveCattle() {
+    try {
+      setIsActionLoading(true)
+      await cattleService.archiveCattle(id)
+      setShowArchiveConfirm(false)
+      navigate('/app/sapi')
+    } catch (err) {
+      console.error('Gagal mengarsipkan sapi:', err)
+      alert(err.response?.data?.detail || 'Gagal mengarsipkan sapi.')
+    } finally {
+      setIsActionLoading(false)
+    }
+  }
+
+  if (isLoading) {
     return (
-      <div className={styles.notFound}>
-        <Beef size={32} />
-        <h2>Data sapi tidak ditemukan</h2>
-        <p>Periksa kembali ID sapi yang ingin kamu buka.</p>
-        <Link to="/app/sapi">
-          <ArrowLeft size={16} /> Kembali ke Daftar Sapi
-        </Link>
+      <div className={styles.detailPage}>
+        <div className={styles.notFound}>
+          <Beef size={32} />
+          <h2>Memuat profil sapi...</h2>
+          <p>Mengambil data dari server peternakan.</p>
+        </div>
       </div>
     )
   }
 
-  const chartData = history.map((item) => ({
-    date: formatDate(item.date),
-    weight: item.weight,
-  }))
+  if (!cow) {
+    return (
+      <div className={styles.detailPage}>
+        <div className={styles.notFound}>
+          <Beef size={32} />
+          <h2>Data sapi tidak ditemukan</h2>
+          <p>Sapi dengan ID {id} tidak ditemukan atau bukan milik peternakan Anda.</p>
+          <Link to="/app/sapi">
+            <ArrowLeft size={16} /> Kembali ke Daftar Sapi
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
+  // Data grafik pertumbuhan diurutkan secara ascending (kronologis)
+  const chartData = [...history]
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .map((item) => ({
+      date: formatDate(item.date),
+      weight: item.weight,
+    }))
 
   const measurementA = history.find((item) => item.id === dateA)
   const measurementB = history.find((item) => item.id === dateB)
@@ -140,8 +192,7 @@ function handleArchiveCattle() {
   const dayInterval =
     measurementA && measurementB
       ? Math.round(
-          (new Date(`${measurementB.date}T00:00:00`) -
-            new Date(`${measurementA.date}T00:00:00`)) /
+          Math.abs(new Date(measurementB.date) - new Date(measurementA.date)) /
             (1000 * 60 * 60 * 24)
         )
       : 0
@@ -165,90 +216,93 @@ function handleArchiveCattle() {
           </div>
 
           <div>
-            <span className={styles.eyebrow}>PROFIL TERNAK</span>
+            <span className={styles.eyebrow}>
+              {cow.status === 'archived' ? 'PROFIL TERNAK (DIARSIPKAN)' : 'PROFIL TERNAK'}
+            </span>
             <h1>ID Sapi {cow.id}</h1>
-            <p>{cow.tag} · {cow.breed} · {cow.gender}</p>
+            <p>
+              {cow.tag} · {cow.breed} · {cow.gender}
+            </p>
           </div>
-    </div>
+        </div>
 
         <div className={styles.profileActions}>
-<button
-  className={styles.secondaryButton}
-  onClick={openEditModal}
->
-  <Pencil size={16} />
-  Edit Profil
-</button>
-<button
-  className={styles.archiveButton}
-  onClick={() => setShowArchiveConfirm(true)}
->
-  <Archive size={16} />
-  Arsipkan
-</button>
+          <button className={styles.secondaryButton} onClick={openEditModal}>
+            <Pencil size={16} />
+            Edit Profil
+          </button>
+          {cow.status !== 'archived' && (
+            <button
+              className={styles.archiveButton}
+              onClick={() => setShowArchiveConfirm(true)}
+            >
+              <Archive size={16} />
+              Arsipkan
+            </button>
+          )}
         </div>
       </header>
 
       <section className={styles.overviewGrid}>
-  <article className={styles.weightHighlight}>
-    <div className={styles.cardTop}>
-      <span>BOBOT TERAKHIR</span>
-      <div className={styles.weightIcon}>
-        <Scale size={19} />
-      </div>
-    </div>
+        <article className={styles.weightHighlight}>
+          <div className={styles.cardTop}>
+            <span>BOBOT TERAKHIR</span>
+            <div className={styles.weightIcon}>
+              <Scale size={19} />
+            </div>
+          </div>
 
-    <strong>
-      {latest ? latest.weight : '—'}
-      <small>kg</small>
-    </strong>
+          <strong>
+            {latest ? latest.weight : cow.latestWeight ?? '—'}
+            <small>kg</small>
+          </strong>
 
-    <div className={styles.weightDate}>
-      <CalendarDays size={15} />
-      {formatDate(latest?.date)}
-    </div>
-  </article>
+          <div className={styles.weightDate}>
+            <CalendarDays size={15} />
+            {formatDate(latest?.date || cow.lastMeasuredAt)}
+          </div>
+        </article>
 
-  <article className={styles.infoCard}>
-    <div className={styles.cardTop}>
-      <span>Jenis Sapi</span>
-      <div className={styles.infoIcon}>
-        <Beef size={18} />
-      </div>
-    </div>
-    <strong>{cow.breed}</strong>
-  </article>
+        <article className={styles.infoCard}>
+          <div className={styles.cardTop}>
+            <span>Jenis Sapi</span>
+            <div className={styles.infoIcon}>
+              <Beef size={18} />
+            </div>
+          </div>
+          <strong>{cow.breed}</strong>
+        </article>
 
-  <article className={styles.infoCard}>
-    <div className={styles.cardTop}>
-      <span>Jenis Kelamin</span>
-      <div className={styles.infoIcon}>
-        <VenusAndMars size={18} />
-      </div>
-    </div>
-    <strong>{cow.gender}</strong>
-  </article>
+        <article className={styles.infoCard}>
+          <div className={styles.cardTop}>
+            <span>Jenis Kelamin</span>
+            <div className={styles.infoIcon}>
+              <VenusAndMars size={18} />
+            </div>
+          </div>
+          <strong>{cow.gender}</strong>
+        </article>
 
-  <article className={styles.infoCard}>
-    <div className={styles.cardTop}>
-      <span>Umur</span>
-      <div className={styles.infoIcon}>
-        <CalendarDays size={18} />
-      </div>
-    </div>
-    <strong>{calculateAge(cow.ageMonths)}</strong>
-  </article>
+        <article className={styles.infoCard}>
+          <div className={styles.cardTop}>
+            <span>Umur</span>
+            <div className={styles.infoIcon}>
+              <CalendarDays size={18} />
+            </div>
+          </div>
+          <strong>{calculateAge(cow.ageMonths)}</strong>
+        </article>
 
-  <article className={styles.infoCard}>
-    <div className={styles.cardTop}>
-      <span>Total Pengukuran</span>
-      <div className={styles.infoIcon}>
-        <ChartNoAxesCombined size={18} />
-      </div>
-    </div>
-    <strong>{history.length} kali</strong>
-  </article>
-</section>
+        <article className={styles.infoCard}>
+          <div className={styles.cardTop}>
+            <span>Total Pengukuran</span>
+            <div className={styles.infoIcon}>
+              <ChartNoAxesCombined size={18} />
+            </div>
+          </div>
+          <strong>{history.length || cow.totalMeasurements || 1} kali</strong>
+        </article>
+      </section>
 
       <section className={styles.chartPanel}>
         <div className={styles.sectionHeader}>
@@ -257,7 +311,7 @@ function handleArchiveCattle() {
             <h2>Riwayat pertumbuhan</h2>
           </div>
           <span className={styles.measurementCount}>
-            {history.length} data
+            {chartData.length} data
           </span>
         </div>
 
@@ -401,7 +455,7 @@ function handleArchiveCattle() {
         </div>
 
         <div className={styles.historyList}>
-          {[...history].reverse().map((item, index) => (
+          {history.map((item, index) => (
             <article className={styles.historyItem} key={item.id}>
               <div className={styles.historyIcon}>
                 <Scale size={18} />
@@ -410,181 +464,190 @@ function handleArchiveCattle() {
                 <strong>Pengukuran #{history.length - index}</strong>
                 <span>{formatDate(item.date)}</span>
               </div>
-              <strong className={styles.historyWeight}>
-                {item.weight} kg
-              </strong>
+              <strong className={styles.historyWeight}>{item.weight} kg</strong>
             </article>
           ))}
 
-          {history.length === 0 && (
-            <p>Belum ada riwayat pengukuran.</p>
-          )}
+          {history.length === 0 && <p>Belum ada riwayat pengukuran.</p>}
         </div>
       </section>
 
-      {showEditModal && createPortal(
-        <div
-          className={styles.modalOverlay}
-          onClick={() => setShowEditModal(false)}
-        >
-          <section
-            className={styles.editModal}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className={styles.modalHeader}>
-              <div>
-                <span className={styles.eyebrow}>PROFIL TERNAK</span>
-                <h2>Edit Profil Sapi</h2>
-                <p>ID {cow.id} · {cow.tag}</p>
+      {showEditModal &&
+        createPortal(
+          <div className={styles.modalOverlay} onClick={() => setShowEditModal(false)}>
+            <section
+              className={styles.editModal}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className={styles.modalHeader}>
+                <div>
+                  <span className={styles.eyebrow}>PROFIL TERNAK</span>
+                  <h2>Edit Profil Sapi</h2>
+                  <p>
+                    ID {cow.id} · {cow.tag}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  className={styles.modalClose}
+                  onClick={() => setShowEditModal(false)}
+                  aria-label="Tutup modal"
+                >
+                  ×
+                </button>
               </div>
 
-              <button
-                type="button"
-                className={styles.modalClose}
-                onClick={() => setShowEditModal(false)}
-                aria-label="Tutup modal"
-              >
-                ×
-              </button>
-            </div>
+              <div className={styles.modalFields}>
+                <label>
+                  ID Sapi
+                  <input value={cow.id} disabled />
+                </label>
 
-            <div className={styles.modalFields}>
-              <label>
-                ID Sapi
-                <input value={cow.id} disabled />
-              </label>
+                <label>
+                  Ear Tag
+                  <input value={cow.tag} disabled />
+                </label>
 
-              <label>
-                Ear Tag
-                <input value={cow.tag} disabled />
-              </label>
+                <label>
+                  Jenis Sapi
+                  <select
+                    value={editForm.breed}
+                    onChange={(event) =>
+                      setEditForm({
+                        ...editForm,
+                        breed: event.target.value,
+                      })
+                    }
+                  >
+                    {jenisSapiList.map((j) => (
+                      <option key={j.id_jenis} value={j.nama_jenis}>
+                        {j.nama_jenis}
+                      </option>
+                    ))}
+                    {jenisSapiList.length === 0 && (
+                      <>
+                        <option value="Simental">Simental</option>
+                        <option value="Limousin">Limousin</option>
+                        <option value="PO">PO</option>
+                        <option value="Brahman">Brahman</option>
+                      </>
+                    )}
+                  </select>
+                </label>
 
-              <label>
-                Jenis Sapi
-                <select
-                  value={editForm.breed}
-                  onChange={(event) =>
-                    setEditForm({
-                      ...editForm,
-                      breed: event.target.value,
-                    })
-                  }
+                <label>
+                  Jenis Kelamin
+                  <select
+                    value={editForm.gender}
+                    onChange={(event) =>
+                      setEditForm({
+                        ...editForm,
+                        gender: event.target.value,
+                      })
+                    }
+                  >
+                    <option value="Jantan">Jantan</option>
+                    <option value="Betina">Betina</option>
+                  </select>
+                </label>
+
+                <label>
+                  Umur (bulan)
+                  <input
+                    type="number"
+                    min="1"
+                    value={editForm.ageMonths}
+                    onChange={(event) =>
+                      setEditForm({
+                        ...editForm,
+                        ageMonths: event.target.value,
+                      })
+                    }
+                  />
+                </label>
+              </div>
+
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  className={styles.cancelButton}
+                  onClick={() => setShowEditModal(false)}
+                  disabled={isActionLoading}
                 >
-                  <option value="Simental">Simental</option>
-                  <option value="Limousin">Limousin</option>
-                  <option value="PO">PO</option>
-                  <option value="Brahman">Brahman</option>
-                </select>
-              </label>
+                  Batal
+                </button>
 
-              <label>
-                Jenis Kelamin
-                <select
-                  value={editForm.gender}
-                  onChange={(event) =>
-                    setEditForm({
-                      ...editForm,
-                      gender: event.target.value,
-                    })
-                  }
+                <button
+                  type="button"
+                  className={styles.saveButton}
+                  onClick={handleSaveProfile}
+                  disabled={isActionLoading}
                 >
-                  <option value="Jantan">Jantan</option>
-                  <option value="Betina">Betina</option>
-                </select>
-              </label>
+                  {isActionLoading ? 'Menyimpan...' : 'Simpan Perubahan'}
+                </button>
+              </div>
+            </section>
+          </div>,
+          document.body
+        )}
 
-              <label>
-                Umur (bulan)
-                <input
-                  type="number"
-                  min="1"
-                  value={editForm.ageMonths}
-                  onChange={(event) =>
-                    setEditForm({
-                      ...editForm,
-                      ageMonths: event.target.value,
-                    })
-                  }
-                />
-              </label>
-            </div>
+      {showArchiveConfirm &&
+        createPortal(
+          <div
+            className={styles.modalOverlay}
+            onClick={() => setShowArchiveConfirm(false)}
+          >
+            <section
+              className={styles.editModal}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className={styles.modalHeader}>
+                <div>
+                  <span className={styles.eyebrow}>KONFIRMASI TINDAKAN</span>
+                  <h2>Arsipkan Sapi?</h2>
+                  <p>
+                    ID {cow.id} · {cow.tag}
+                  </p>
+                </div>
 
-            <div className={styles.modalActions}>
-              <button
-                type="button"
-                className={styles.cancelButton}
-                onClick={() => setShowEditModal(false)}
-              >
-                Batal
-              </button>
+                <button
+                  type="button"
+                  className={styles.modalClose}
+                  onClick={() => setShowArchiveConfirm(false)}
+                >
+                  ×
+                </button>
+              </div>
 
-              <button
-                type="button"
-                className={styles.saveButton}
-                onClick={() => {
-  console.log('TOMBOL SIMPAN DIKLIK')
-  handleSaveProfile()
-}}
-              >
-                Simpan Perubahan
-              </button>
-            </div>
-          </section>
-        </div>,
-        document.body
-      )}
-{showArchiveConfirm && createPortal(
-  <div
-    className={styles.modalOverlay}
-    onClick={() => setShowArchiveConfirm(false)}
-  >
-    <section
-      className={styles.editModal}
-      onClick={(event) => event.stopPropagation()}
-    >
-      <div className={styles.modalHeader}>
-        <div>
-          <span className={styles.eyebrow}>KONFIRMASI TINDAKAN</span>
-          <h2>Arsipkan Sapi?</h2>
-          <p>ID {cow.id} · {cow.tag}</p>
-        </div>
+              <p className={styles.archiveDescription}>
+                Sapi ini akan dipindahkan ke daftar arsip dan tidak lagi muncul
+                sebagai sapi aktif. Seluruh riwayat pengukurannya tetap tersimpan.
+              </p>
 
-        <button
-          type="button"
-          className={styles.modalClose}
-          onClick={() => setShowArchiveConfirm(false)}
-        >
-          ×
-        </button>
-      </div>
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  className={styles.cancelButton}
+                  onClick={() => setShowArchiveConfirm(false)}
+                  disabled={isActionLoading}
+                >
+                  Batal
+                </button>
 
-      <p className={styles.archiveDescription}>
-        Sapi ini akan dipindahkan ke daftar arsip dan tidak lagi
-        muncul sebagai sapi aktif. Seluruh riwayat pengukurannya
-        tetap tersimpan.
-      </p>
-
-      <div className={styles.modalActions}>
-        <button
-          type="button"
-          className={styles.cancelButton}
-          onClick={() => setShowArchiveConfirm(false)}
-        >
-          Batal
-        </button>
-
-        <button
-          type="button"
-          className={styles.archiveConfirmButton}
-          onClick={handleArchiveCattle}
-        >
-          Ya, Arsipkan
-        </button>
-      </div>
-    </section>
-  </div>,
-  document.body
-)}
+                <button
+                  type="button"
+                  className={styles.archiveConfirmButton}
+                  onClick={handleArchiveCattle}
+                  disabled={isActionLoading}
+                >
+                  {isActionLoading ? 'Mengarsipkan...' : 'Ya, Arsipkan'}
+                </button>
+              </div>
+            </section>
+          </div>,
+          document.body
+        )}
     </div>
   )
 }

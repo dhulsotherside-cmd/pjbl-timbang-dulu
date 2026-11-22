@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Optional
 from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -30,13 +31,13 @@ class Pengukuran(Base):
         nullable=False,
         default=func.current_date()
     )
-    path_foto_samping: Mapped[str] = mapped_column(
+    path_foto_samping: Mapped[Optional[str]] = mapped_column(
         String(500),
-        nullable=False
+        nullable=True
     )
-    path_foto_belakang: Mapped[str] = mapped_column(
+    path_foto_belakang: Mapped[Optional[str]] = mapped_column(
         String(500),
-        nullable=False
+        nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

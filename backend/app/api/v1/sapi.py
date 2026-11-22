@@ -1,5 +1,9 @@
+from datetime import date
+from decimal import Decimal
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import desc, func
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session, joinedload
 
 from app.api.deps import get_current_user, get_db
@@ -33,59 +37,134 @@ def list_jenis_sapi(
     return db.query(JenisSapi).order_by(JenisSapi.nama_jenis.asc()).all()
 
 
+def _resolve_jenis_id(db: Session, id_jenis: Optional[int], breed: Optional[str]) -> Optional[int]:
+    """
+    Utilitas untuk memvalidasi dan me-resolve ID jenis sapi baik dari ID maupun nama breed.
+    """
+    if id_jenis is not None:
+        exists = db.query(JenisSapi).filter(JenisSapi.id_jenis == id_jenis).first()
+        if not exists:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Jenis sapi dengan ID {id_jenis} tidak ditemukan."
+            )
+        return id_jenis
+
+    if breed and breed.strip():
+        cleaned_breed = breed.strip()
+        match = db.query(JenisSapi).filter(JenisSapi.nama_jenis.ilike(f"%{cleaned_breed}%")).first()
+        if match:
+            return match.id_jenis
+
+    return None
+
+
+def _enrich_sapi_with_measurement(db: Session, sapi: Sapi) -> SapiResponse:
+    """
+    Helper untuk menyertakan bobot terakhir dan total pengukuran ke objek SapiResponse.
+    """
+    latest_pengukuran = (
+        db.query(Pengukuran)
+        .filter(Pengukuran.id_sapi == sapi.id_sapi)
+        .order_by(Pengukuran.tanggal_ukur.desc(), Pengukuran.id_pengukuran.desc())
+        .first()
+    )
+    total_pengukuran = (
+        db.query(func.count(Pengukuran.id_pengukuran))
+        .filter(Pengukuran.id_sapi == sapi.id_sapi)
+        .scalar() or 0
+    )
+
+    return SapiResponse(
+        id_sapi=sapi.id_sapi,
+        id_user=sapi.id_user,
+        ear_tag=sapi.ear_tag,
+        id_jenis=sapi.id_jenis,
+        jenis_kelamin=sapi.jenis_kelamin,
+        umur_bulan=sapi.umur_bulan,
+        tanggal_masuk=sapi.tanggal_masuk,
+        tanggal_keluar=sapi.tanggal_keluar,
+        created_at=sapi.created_at,
+        jenis=sapi.jenis,
+        bobot_terakhir=float(latest_pengukuran.bobot) if latest_pengukuran else None,
+        tanggal_ukur_terakhir=latest_pengukuran.tanggal_ukur if latest_pengukuran else None,
+        total_pengukuran=total_pengukuran,
+    )
+
+
 # --- CRUD Sapi (Multi-Tenant Isolated) ---
 @router.post(
     "/",
     response_model=SapiResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Tambah Sapi Baru"
+    summary="Tambah Sapi Baru Beserta Bobot Awal Manual"
 )
 def create_sapi(
     sapi_in: SapiCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
-) -> Sapi:
+) -> SapiResponse:
     """
-    Mendaftarkan ternak sapi baru ke peternakan milik pengguna yang sedang login.
-    - Validasi keunikan `ear_tag` khusus untuk akun peternak ini.
-    - Menghubungkan ID jenis sapi yang valid jika diisi.
+    Mendaftarkan ternak sapi baru ke peternakan milik pengguna yang sedang login:
+    - Validasi keunikan `ear_tag` khusus pada peternakan pengguna ini.
+    - Resolusi `id_jenis` dari ID atau nama string `breed`.
+    - Perekaman data sapi dan bobot awal manual ke tabel `pengukuran` dalam satu transaksi atomik.
     """
+    cleaned_tag = sapi_in.ear_tag.strip()
+
     # 1. Validasi keunikan ear_tag per user
     existing_ear_tag = db.query(Sapi).filter(
         Sapi.id_user == current_user.id_user,
-        Sapi.ear_tag == sapi_in.ear_tag
+        func.lower(Sapi.ear_tag) == cleaned_tag.lower()
     ).first()
     if existing_ear_tag:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Ear tag '{sapi_in.ear_tag}' sudah terdaftar pada peternakan Anda."
+            detail=f"Ear tag '{cleaned_tag}' sudah terdaftar pada peternakan Anda."
         )
 
-    # 2. Validasi id_jenis jika disertakan
-    if sapi_in.id_jenis is not None:
-        jenis_exists = db.query(JenisSapi).filter(
-            JenisSapi.id_jenis == sapi_in.id_jenis
-        ).first()
-        if not jenis_exists:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Jenis sapi dengan ID {sapi_in.id_jenis} tidak ditemukan."
-            )
+    # 2. Resolusi ID jenis sapi
+    resolved_id_jenis = _resolve_jenis_id(db, sapi_in.id_jenis, sapi_in.breed)
 
-    db_sapi = Sapi(
-        id_user=current_user.id_user,
-        id_jenis=sapi_in.id_jenis,
-        ear_tag=sapi_in.ear_tag,
-        jenis_kelamin=sapi_in.jenis_kelamin,
-        umur_bulan=sapi_in.umur_bulan,
-        tanggal_masuk=sapi_in.tanggal_masuk,
-        tanggal_keluar=sapi_in.tanggal_keluar,
-    )
-    db.add(db_sapi)
-    db.commit()
-    db.refresh(db_sapi)
+    # 3. Transaksi atomik penambahan sapi dan pengukuran awal
+    try:
+        db_sapi = Sapi(
+            id_user=current_user.id_user,
+            id_jenis=resolved_id_jenis,
+            ear_tag=cleaned_tag,
+            jenis_kelamin=sapi_in.jenis_kelamin,
+            umur_bulan=sapi_in.umur_bulan,
+            tanggal_masuk=sapi_in.tanggal_masuk,
+            tanggal_keluar=sapi_in.tanggal_keluar,
+        )
+        db.add(db_sapi)
+        db.flush()  # Dapatkan id_sapi dari sequence DB
 
-    return db_sapi
+        # Catat bobot awal sebagai rekor pengukuran pertama
+        initial_measurement = Pengukuran(
+            id_sapi=db_sapi.id_sapi,
+            bobot=Decimal(str(round(sapi_in.bobot_awal, 2))),
+            tanggal_ukur=sapi_in.tanggal_masuk,
+            path_foto_samping=None,
+            path_foto_belakang=None,
+        )
+        db.add(initial_measurement)
+        db.commit()
+        db.refresh(db_sapi)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Ear tag '{cleaned_tag}' sudah digunakan pada peternakan Anda."
+        )
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Gagal menyimpan data sapi baru ke database: {str(exc)}"
+        )
+
+    return _enrich_sapi_with_measurement(db, db_sapi)
 
 
 @router.get(
@@ -95,14 +174,15 @@ def create_sapi(
 )
 def list_sapi(
     skip: int = Query(0, ge=0, description="Offset data untuk pagination"),
-    limit: int = Query(50, ge=1, le=100, description="Batas maksimal data"),
+    limit: int = Query(100, ge=1, le=200, description="Batas maksimal data"),
     search: Optional[str] = Query(None, description="Pencarian berdasarkan ear tag"),
+    status: Optional[str] = Query("all", description="Filter status: 'active', 'archived', atau 'all'"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
-) -> List[Sapi]:
+) -> List[SapiResponse]:
     """
     Menampilkan daftar sapi milik peternak yang sedang login (Multi-tenancy enforced).
-    Mendukung pagination dan filter pencarian `ear_tag`.
+    Mendukung pagination, filter pencarian `ear_tag`, dan filter status sapi aktif/diarsipkan.
     """
     query = (
         db.query(Sapi)
@@ -110,10 +190,17 @@ def list_sapi(
         .filter(Sapi.id_user == current_user.id_user)
     )
 
-    if search:
+    if status == "active":
+        query = query.filter(Sapi.tanggal_keluar.is_(None))
+    elif status == "archived":
+        query = query.filter(Sapi.tanggal_keluar.isnot(None))
+
+    if search and search.strip():
         query = query.filter(Sapi.ear_tag.ilike(f"%{search.strip()}%"))
 
-    return query.order_by(Sapi.created_at.desc()).offset(skip).limit(limit).all()
+    sapi_list = query.order_by(Sapi.created_at.desc()).offset(skip).limit(limit).all()
+
+    return [_enrich_sapi_with_measurement(db, s) for s in sapi_list]
 
 
 @router.get(
@@ -145,35 +232,7 @@ def get_sapi_detail(
             detail=f"Sapi dengan ID {id_sapi} tidak ditemukan atau bukan milik peternakan Anda."
         )
 
-    # Ambil data pengukuran bobot terakhir
-    latest_pengukuran = (
-        db.query(Pengukuran)
-        .filter(Pengukuran.id_sapi == id_sapi)
-        .order_by(Pengukuran.tanggal_ukur.desc(), Pengukuran.id_pengukuran.desc())
-        .first()
-    )
-
-    total_pengukuran = (
-        db.query(Pengukuran)
-        .filter(Pengukuran.id_sapi == id_sapi)
-        .count()
-    )
-
-    return SapiDetailResponse(
-        id_sapi=sapi.id_sapi,
-        id_user=sapi.id_user,
-        ear_tag=sapi.ear_tag,
-        id_jenis=sapi.id_jenis,
-        jenis_kelamin=sapi.jenis_kelamin,
-        umur_bulan=sapi.umur_bulan,
-        tanggal_masuk=sapi.tanggal_masuk,
-        tanggal_keluar=sapi.tanggal_keluar,
-        created_at=sapi.created_at,
-        jenis=sapi.jenis,
-        bobot_terakhir=float(latest_pengukuran.bobot) if latest_pengukuran else None,
-        tanggal_ukur_terakhir=latest_pengukuran.tanggal_ukur if latest_pengukuran else None,
-        total_pengukuran=total_pengukuran,
-    )
+    return _enrich_sapi_with_measurement(db, sapi)
 
 
 @router.put(
@@ -186,7 +245,7 @@ def update_sapi(
     sapi_in: SapiUpdate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
-) -> Sapi:
+) -> SapiResponse:
     """
     Memperbarui atribut profil sapi milik peternak yang sedang login.
     """
@@ -200,57 +259,68 @@ def update_sapi(
             detail=f"Sapi dengan ID {id_sapi} tidak ditemukan atau bukan milik peternakan Anda."
         )
 
-    # Jika mengubah ear_tag, pastikan tidak bentrok dengan sapi lain milik user yang sama
-    if sapi_in.ear_tag and sapi_in.ear_tag != sapi.ear_tag:
+    # Validasi ear_tag jika diubah
+    if sapi_in.ear_tag and sapi_in.ear_tag.strip() != sapi.ear_tag:
+        cleaned_tag = sapi_in.ear_tag.strip()
         duplicate = db.query(Sapi).filter(
             Sapi.id_user == current_user.id_user,
-            Sapi.ear_tag == sapi_in.ear_tag,
+            func.lower(Sapi.ear_tag) == cleaned_tag.lower(),
             Sapi.id_sapi != id_sapi
         ).first()
         if duplicate:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Ear tag '{sapi_in.ear_tag}' sudah digunakan oleh ternak Anda yang lain."
+                detail=f"Ear tag '{cleaned_tag}' sudah digunakan oleh ternak Anda yang lain."
             )
-        sapi.ear_tag = sapi_in.ear_tag
+        sapi.ear_tag = cleaned_tag
 
-    if sapi_in.id_jenis is not None:
-        jenis_exists = db.query(JenisSapi).filter(
-            JenisSapi.id_jenis == sapi_in.id_jenis
-        ).first()
-        if not jenis_exists:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Jenis sapi dengan ID {sapi_in.id_jenis} tidak ditemukan."
-            )
-        sapi.id_jenis = sapi_in.id_jenis
+    # Resolusi ID jenis jika ada perubahan jenis / breed
+    if sapi_in.id_jenis is not None or sapi_in.breed is not None:
+        resolved_jenis = _resolve_jenis_id(db, sapi_in.id_jenis, sapi_in.breed)
+        if resolved_jenis is not None:
+            sapi.id_jenis = resolved_jenis
 
     if sapi_in.jenis_kelamin is not None:
-        sapi.jenis_kelamin = sapi_in.jenis_kelamin
+        sapi.jenis_kelamin = sapi_in.jenis_kelamin.strip()
     if sapi_in.umur_bulan is not None:
         sapi.umur_bulan = sapi_in.umur_bulan
     if sapi_in.tanggal_masuk is not None:
         sapi.tanggal_masuk = sapi_in.tanggal_masuk
-    if sapi_in.tanggal_keluar is not None:
+
+    # Penanganan status active / archived
+    if sapi_in.status == "archived" and sapi.tanggal_keluar is None:
+        sapi.tanggal_keluar = date.today()
+    elif sapi_in.status == "active":
+        sapi.tanggal_keluar = None
+    elif sapi_in.tanggal_keluar is not None:
         sapi.tanggal_keluar = sapi_in.tanggal_keluar
 
-    db.commit()
-    db.refresh(sapi)
-    return sapi
+    try:
+        db.commit()
+        db.refresh(sapi)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Terjadi konflik data saat memperbarui profil sapi."
+        )
+
+    return _enrich_sapi_with_measurement(db, sapi)
 
 
-@router.delete(
-    "/{id_sapi}",
-    status_code=status.HTTP_200_OK,
-    summary="Hapus Data Sapi"
+@router.patch(
+    "/{id_sapi}/archive",
+    response_model=SapiResponse,
+    summary="Arsipkan Sapi (Soft Delete / Sapi Keluar)"
 )
-def delete_sapi(
+def archive_sapi(
     id_sapi: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
-) -> dict:
+) -> SapiResponse:
     """
-    Menghapus data sapi dan rekaman pengukurannya dari peternakan pengguna.
+    Memindahkan sapi aktif ke status arsip/keluar dengan mencatat tanggal_keluar = hari ini.
+    Seluruh rekaman riwayat pengukuran tetap dipertahankan.
     """
     sapi = db.query(Sapi).filter(
         Sapi.id_sapi == id_sapi,
@@ -262,9 +332,70 @@ def delete_sapi(
             detail=f"Sapi dengan ID {id_sapi} tidak ditemukan atau bukan milik peternakan Anda."
         )
 
+    sapi.tanggal_keluar = date.today()
+    db.commit()
+    db.refresh(sapi)
+
+    return _enrich_sapi_with_measurement(db, sapi)
+
+
+@router.patch(
+    "/{id_sapi}/unarchive",
+    response_model=SapiResponse,
+    summary="Aktifkan Kembali Sapi yang Diarsipkan"
+)
+def unarchive_sapi(
+    id_sapi: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> SapiResponse:
+    """
+    Mengaktifkan kembali sapi yang sebelumnya diarsipkan (menghapus tanggal_keluar).
+    """
+    sapi = db.query(Sapi).filter(
+        Sapi.id_sapi == id_sapi,
+        Sapi.id_user == current_user.id_user
+    ).first()
+    if not sapi:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Sapi dengan ID {id_sapi} tidak ditemukan atau bukan milik peternakan Anda."
+        )
+
+    sapi.tanggal_keluar = None
+    db.commit()
+    db.refresh(sapi)
+
+    return _enrich_sapi_with_measurement(db, sapi)
+
+
+@router.delete(
+    "/{id_sapi}",
+    status_code=status.HTTP_200_OK,
+    summary="Hapus Data Sapi (Permanen)"
+)
+def delete_sapi(
+    id_sapi: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> dict:
+    """
+    Menghapus data sapi dan rekaman pengukurannya dari peternakan pengguna secara permanen.
+    """
+    sapi = db.query(Sapi).filter(
+        Sapi.id_sapi == id_sapi,
+        Sapi.id_user == current_user.id_user
+    ).first()
+    if not sapi:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Sapi dengan ID {id_sapi} tidak ditemukan atau bukan milik peternakan Anda."
+        )
+
+    ear_tag = sapi.ear_tag
     db.delete(sapi)
     db.commit()
     return {
         "status": "success",
-        "message": f"Sapi dengan ear tag '{sapi.ear_tag}' berhasil dihapus."
+        "message": f"Sapi dengan ear tag '{ear_tag}' berhasil dihapus."
     }

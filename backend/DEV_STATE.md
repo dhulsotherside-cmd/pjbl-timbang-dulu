@@ -1,9 +1,9 @@
 # Developer State & Architecture Snapshot — TimbangDulu Backend
 
 **Berkas Dokumen:** `DEV_STATE.md`  
-**Status Layanan:** Operational (MVP Setup + Neon Pooling + Route Guards + User Registration & Auth Active)  
-**Versi Sistem:** SemVer `0.3.0`  
-**Tanggal Snapshot Terakhir:** 22 November 2026  
+**Status Layanan:** Operational (MVP Setup + Neon Pooling + Route Guards + User Auth + Cattle CRUD Active)  
+**Versi Sistem:** SemVer `0.4.0`  
+**Tanggal Snapshot Terakhir:** 23 November 2026  
 **Spesialis Dokumentasi:** Senior Backend Engineer & Database Architect  
 **Basis Rujukan:** [PRD.md](file:///C:/Users/THINKPAD/Documents/Banu/IPB/proyek/TimbangDulu/backend/PRD.md)
 
@@ -15,8 +15,9 @@
 | :--- | :--- | :--- | :--- |
 | **Backend Service Runner** | `backend/main.py`<br>`backend/app/main.py` | **ACTIVE & VERIFIED** | Runner mandiri yang memungkinkan eksekusi server FastAPI cukup dengan `python main.py`. Membungkus Uvicorn programmatic runner (`127.0.0.1:8000`, `reload=True`) dengan resolusi aman `sys.path`. |
 | **Authentication & Multi-tenancy** | `app/core/security.py`<br>`app/api/deps.py`<br>`app/api/v1/auth.py` | **ACTIVE & VERIFIED** | Autentikasi berbasis JWT (`HS256`) dengan enkripsi kata sandi `bcrypt`. Endpoint registrasi `POST /api/v1/auth/register` terintegrasi tabel `users` Neon PostgreSQL dengan proteksi duplikasi username dan rollback otomatis. Dependency `get_current_user` menegakkan isolasi multi-tenancy. |
-| **Database & ORM Layer** | `app/db/base.py`<br>`app/db/session.py`<br>`app/models/*`<br>`app/db/init_db.py` | **ACTIVE & VERIFIED** | Menggunakan **SQLAlchemy 2.0** DeclarativeBase dengan driver `psycopg2-binary` & `psycopg` (v3). Connection pooling dikonfigurasi (`pool_size=10`, `max_overflow=20`, `pool_recycle=300s`, `pool_pre_ping=True`, `connect_timeout=15s`) untuk ketahanan terhadap perilaku *scale-to-zero* dan auto-suspend bawaan **PostgreSQL Neon**. Model mencakup `users`, `jenis_sapi`, `sapi`, dan `pengukuran` dengan composite time-series index. |
-| **Frontend Auth & Route Guards** | `frontend/src/components/auth/ProtectedRoute.jsx`<br>`frontend/src/components/auth/GuestRoute.jsx`<br>`frontend/src/pages/RegisterPage.jsx`<br>`frontend/src/pages/LoginPage.jsx`<br>`frontend/src/pages/AccountPage.jsx`<br>`frontend/src/context/AuthContext.jsx`<br>`frontend/src/services/api.js` | **ACTIVE & VERIFIED** | Keamanan navigasi penuh: Form registrasi React tersambung ke backend API dengan validasi, disable submit, notifikasi status ramah pengguna, auto-redirect ke login, dan route guard lengkap. |
+| **Manajemen Sapi (Cattle CRUD)** | `app/models/sapi.py`<br>`app/schemas/sapi.py`<br>`app/api/v1/sapi.py` | **ACTIVE & VERIFIED** | Manajemen sapi per peternak: `POST /api/v1/sapi/` mencatat sapi + bobot awal manual ke tabel `pengukuran` dalam satu transaksi atomik. Mendukung filter `status` (active/archived/all), pencarian ear tag, update profil, dan pengarsipan (*soft delete* via `PATCH /archive`). |
+| **Database & ORM Layer** | `app/db/base.py`<br>`app/db/session.py`<br>`app/models/*`<br>`app/db/init_db.py` | **ACTIVE & VERIFIED** | Menggunakan **SQLAlchemy 2.0** DeclarativeBase dengan driver `psycopg2-binary` & `psycopg` (v3). Kolom `path_foto_samping` dan `path_foto_belakang` pada tabel `pengukuran` telah dimigrasi menjadi nullable untuk mendukung pencatatan bobot awal manual. Connection pooling dikonfigurasi (`pool_size=10`, `max_overflow=20`, `pool_recycle=300s`, `pool_pre_ping=True`, `connect_timeout=15s`) untuk resiliensi **PostgreSQL Neon**. |
+| **Frontend Cattle & Auth Wiring** | `frontend/src/services/cattleService.js`<br>`frontend/src/pages/CattlePage.jsx`<br>`frontend/src/pages/CattleDetailPage.jsx`<br>`frontend/src/pages/RegisterPage.jsx`<br>`frontend/src/pages/LoginPage.jsx` | **ACTIVE & VERIFIED** | Seluruh antarmuka manajemen ternak tersambung ke API backend: modal tambah sapi dengan input bobot awal manual dan pre-filled tanggal masuk, tab sapi aktif & arsip, overview profil, grafik pertumbuhan Recharts, kalkulator PBH interaktif, dan modal konfirmasi arsip. |
 | **Object Storage (Supabase)** | `app/services/supabase_storage.py` | **ACTIVE & VERIFIED** | Mengelola upload berkas citra sapi ke Supabase Storage Bucket `cattle-images`. Dilengkapi validasi format MIME type (`image/jpeg`, `image/png`, `image/webp`), sanitasi nama acak berbasis `uuid4().ext`, dan fallback adapter saat mode mock/lokal aktif. |
 | **Estimasi & Computer Vision Layer** | `app/services/ai_inference.py` | **ACTIVE (MOCK MODE)** | Kelas `CattleVisionService` terpasang dengan toggle `USE_MOCK_AI=True`. Menghasilkan estimasi bobot realistis ($60.0 - 450.0\text{ kg}$) berdasarkan usia bulan dan jenis kelamin ternak dengan latensi simulasi $0.5 - 0.8\text{ detik}$. Siap diganti modul ONNX Runtime saat bobot model diserahkan. |
 | **Kalkulator PBH (ADG)** | `app/services/pbh_calculator.py` | **ACTIVE & VERIFIED** | Menghitung Perkembangan Bobot Harian $\text{PBH} = \frac{\Delta\text{Bobot}}{\Delta\text{Hari}}$. Memiliki guardrail $\Delta\text{Hari} > 0$ (`HTTP 400`), penentuan status pertumbuhan (`NORMAL` / `PERINGATAN_PENURUNAN`), serta saran evaluasi pakan jika PBH negatif. |
@@ -44,11 +45,13 @@ Semua endpoint versi 1 diakses melalui prefix `/api/v1`. OpenAPI Swagger UI akti
 | Method | Path | Auth | Query / Request Body | Response Success | Catatan |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `GET` | `/api/v1/sapi/jenis` | Public | - | `200 OK` (`List[JenisSapiResponse]`) | Master data ras sapi (Simental, Limousin, PO, dll) |
-| `POST` | `/api/v1/sapi/` | Bearer Token | JSON `SapiCreate`: `ear_tag`, `id_jenis`, `jenis_kelamin`, `umur_bulan`, `tanggal_masuk`, `tanggal_keluar` | `201 Created` (`SapiResponse`) | Constraint unik `(id_user, ear_tag)` ditegakkan |
-| `GET` | `/api/v1/sapi/` | Bearer Token | Query: `skip=0`, `limit=50`, `search=...` | `200 OK` (`List[SapiResponse]`) | Menampilkan hanya sapi milik `current_user` |
+| `POST` | `/api/v1/sapi/` | Bearer Token | JSON `SapiCreate`: `ear_tag`/`tag`, `id_jenis`/`breed`, `jenis_kelamin`/`gender`, `umur_bulan`/`ageMonths`, `bobot_awal`/`bobotAwal`, `tanggal_masuk` | `201 Created` (`SapiResponse`) | Transaksi atomik simpan sapi + rekor bobot awal di tabel `pengukuran`. Constraint unik `(id_user, ear_tag)` ditegakkan |
+| `GET` | `/api/v1/sapi/` | Bearer Token | Query: `skip=0`, `limit=100`, `search=...`, `status=active\|archived\|all` | `200 OK` (`List[SapiResponse]`) | Menampilkan sapi milik `current_user` dengan filter tab status dan data bobot terakhir |
 | `GET` | `/api/v1/sapi/{id_sapi}` | Bearer Token | Path: `id_sapi` | `200 OK` (`SapiDetailResponse`) | Termasuk `bobot_terakhir`, `tanggal_ukur_terakhir`, `total_pengukuran` |
-| `PUT` | `/api/v1/sapi/{id_sapi}` | Bearer Token | JSON `SapiUpdate` | `200 OK` (`SapiResponse`) | Validasi kepemilikan & keunikan ear tag baru |
-| `DELETE` | `/api/v1/sapi/{id_sapi}` | Bearer Token | Path: `id_sapi` | `200 OK` (`{"status": "success", "message": "..."}`) | Cascade delete relasi pengukuran |
+| `PUT` | `/api/v1/sapi/{id_sapi}` | Bearer Token | JSON `SapiUpdate` | `200 OK` (`SapiResponse`) | Validasi kepemilikan, keunikan tag, resolusi breed, & update status |
+| `PATCH` | `/api/v1/sapi/{id_sapi}/archive` | Bearer Token | Path: `id_sapi` | `200 OK` (`SapiResponse`) | Pengarsipan sapi (*soft delete*) mencatat `tanggal_keluar = today` |
+| `PATCH` | `/api/v1/sapi/{id_sapi}/unarchive` | Bearer Token | Path: `id_sapi` | `200 OK` (`SapiResponse`) | Mengaktifkan kembali sapi yang terarsip |
+| `DELETE` | `/api/v1/sapi/{id_sapi}` | Bearer Token | Path: `id_sapi` | `200 OK` (`{"status": "success", "message": "..."}`) | Cascade delete relasi pengukuran (permanen) |
 
 ### 2.4. Modul Pengukuran & Kalkulator PBH (`/api/v1/pengukuran`)
 | Method | Path | Auth | Form-Data / JSON | Response Success | Catatan |
@@ -81,14 +84,16 @@ Dikelola melalui berkas `.env` dan diakses melalui `app/core/config.py` (Pydanti
 
 ## 4. Status Pengujian Otomatis (Automated Test Suite)
 
-- **Total Test Cases:** 17 passed, 0 failed.
+- **Total Test Cases:** 22 passed, 0 failed.
 - **Lokasi Berkas Uji:** `tests/`
+  - `tests/test_sapi_crud.py`: Pengujian transaksi atomik simpan sapi + bobot awal, constraint unik ear tag per user, isolasi multi-tenancy beda peternak, update profil, pengarsipan (*status transition* active/archived), dan unarchive.
   - `tests/test_registration.py`: Pengujian siklus registrasi lengkap (status 201, verifikasi hash bcrypt di DB, penolakan duplikasi 400, fallback email frontend, validasi panjang password).
   - `tests/test_pbh.py`: Validasi rumus ADG, status alert penurunan, dan guardrail $\Delta\text{Hari} \le 0$.
   - `tests/test_security.py`: Pengujian hashing password bcrypt dan siklus JWT sign-decode.
   - `tests/test_ai_inference.py`: Pengujian latensi simulasi dan rentang bobot $60 - 450\text{ kg}$.
-  - `tests/test_api_integration.py`: Alur menyeluruh registrasi $\rightarrow$ login $\rightarrow$ isolasi multi-tenant $\rightarrow$ penambahan sapi $\rightarrow$ prediksi 2 titik $\rightarrow$ inspeksi riwayat & PBH.
-  - `tests/verify_neon_registration.py`: Skrip verifikasi live end-to-end ke database Neon PostgreSQL aktif.
+  - `tests/test_api_integration.py`: Alur menyeluruh registrasi $\rightarrow$ login $\rightarrow$ isolasi multi-tenant $\rightarrow$ penambahan sapi dengan bobot awal $\rightarrow$ prediksi 2 titik $\rightarrow$ inspeksi riwayat & PBH.
+  - `tests/verify_neon_sapi_crud.py`: Skrip verifikasi live end-to-end CRUD data sapi langsung ke database Neon PostgreSQL aktif.
+  - `tests/verify_neon_registration.py`: Skrip verifikasi live end-to-end registrasi langsung ke database Neon PostgreSQL aktif.
 
 ---
 
@@ -105,7 +110,10 @@ Berikut adalah daftar periksa terstruktur untuk sesi prompt dan sprint pengemban
 
 - [x] **User Registration Flow & Neon PostgreSQL Persistence:**
   - Endpoint `POST /api/v1/auth/register` dengan validasi Pydantic, proteksi duplikasi username, hashing bcrypt, transaksi rollback aman, dan response tanpa password hash.
-  - Form registrasi frontend (`RegisterPage.jsx`) tersambung ke endpoint dengan state loading, penanganan error, dan auto-redirect ke login.
+  - Form registrasi frontend (`RegisterPage.jsx`) tersambung ke endpoint dengan input username, state loading, penanganan error, dan auto-redirect ke login.
+
+- [x] **Cattle CRUD Management & Initial Weight Tracking (`/api/v1/sapi`):**
+  - Endpoint CRUD sapi terisolasi multi-tenancy, transaksi atomik pencatatan bobot awal manual ke tabel `pengukuran`, migrasi kolom foto nullable di Neon PostgreSQL, endpoint arsip (`PATCH /archive`), dan penyambungan antarmuka frontend (`CattlePage.jsx` & `CattleDetailPage.jsx`).
 
 - [ ] **Endpoint Tren Pertumbuhan & Analisis Grafik (`GET /api/v1/pengukuran/history/{id_sapi}`):**
   - Implementasikan endpoint agregasi analitik yang mengembalikan ringkasan statistik (bobot awal masuk, bobot saat ini, total gain, rata-rata ADG keseluruhan, target panen/jual).

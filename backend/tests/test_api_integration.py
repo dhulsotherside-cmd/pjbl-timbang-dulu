@@ -89,7 +89,8 @@ def test_sapi_multi_tenancy_and_crud():
         "id_jenis": jenis_id,
         "jenis_kelamin": "Jantan",
         "umur_bulan": 18,
-        "tanggal_masuk": "2026-11-01"
+        "tanggal_masuk": "2026-11-01",
+        "bobot_awal": 250.0
     }
     sapi1_res = client.post("/api/v1/sapi/", json=sapi_payload, headers=headers1)
     assert sapi1_res.status_code == 201
@@ -135,7 +136,8 @@ def test_pengukuran_prediction_and_pbh():
         "ear_tag": "BEEF-99",
         "jenis_kelamin": "Jantan",
         "umur_bulan": 15,
-        "tanggal_masuk": "2026-10-01"
+        "tanggal_masuk": str(date.today() - timedelta(days=14)),
+        "bobot_awal": 210.0
     }, headers=headers)
     id_sapi = sapi_res.json()["id_sapi"]
 
@@ -149,7 +151,7 @@ def test_pengukuran_prediction_and_pbh():
     }
     data = {"id_sapi": id_sapi}
 
-    # 1. Eksekusi Prediksi Pertama
+    # 1. Eksekusi Prediksi Pertama (setelah selang 14 hari dari pendaftaran bobot awal)
     pred1 = client.post("/api/v1/pengukuran/predict", data=data, files=files, headers=headers)
     assert pred1.status_code == 201
     pred1_json = pred1.json()
@@ -158,14 +160,15 @@ def test_pengukuran_prediction_and_pbh():
     assert 60.0 <= pred1_json["data"]["bobot_estimasi_kg"] <= 450.0
     assert pred1_json["data"]["foto_samping_url"] != ""
     assert pred1_json["data"]["foto_belakang_url"] != ""
-    # Pengukuran pertama belum memiliki data historis sebelumnya
-    assert pred1_json["data"]["pbh_info"] is None
+    # Sapi telah memiliki rekor bobot awal 14 hari lalu, sehingga PBH terhitung
+    assert pred1_json["data"]["pbh_info"] is not None
+    assert pred1_json["data"]["pbh_info"]["selang_hari"] == 14
 
-    # Simulasikan pengukuran 14 hari yang lalu di DB agar saat pengukuran hari ini PBH terhitung
+    # Simulasikan pembaruan tanggal ukur pengukuran terakhir di DB agar saat pengukuran kedua selang hari terhitung
     with TestingSessionLocal() as db:
-        old_record = db.query(Pengukuran).filter(Pengukuran.id_sapi == id_sapi).first()
-        old_record.tanggal_ukur = date.today() - timedelta(days=14)
-        old_record.bobot = 250.00
+        last_m = db.query(Pengukuran).filter(Pengukuran.id_sapi == id_sapi).order_by(Pengukuran.id_pengukuran.desc()).first()
+        last_m.tanggal_ukur = date.today() - timedelta(days=14)
+        last_m.bobot = 250.00
         db.commit()
 
     # 2. Eksekusi Prediksi Kedua (setelah ada selang hari historis)
@@ -180,11 +183,11 @@ def test_pengukuran_prediction_and_pbh():
     assert pred2_json["data"]["pbh_info"]["selang_hari"] == 14
     assert "status" in pred2_json["data"]["pbh_info"]
 
-    # 3. Ambil riwayat pengukuran sapi
+    # 3. Ambil riwayat pengukuran sapi (total 3: bobot awal + pred1 + pred2)
     riwayat = client.get(f"/api/v1/pengukuran/sapi/{id_sapi}", headers=headers)
     assert riwayat.status_code == 200
     riwayat_list = riwayat.json()
-    assert len(riwayat_list) == 2
+    assert len(riwayat_list) == 3
 
 
 def test_custom_pbh_calculator_endpoint():

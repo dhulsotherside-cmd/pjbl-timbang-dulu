@@ -5,6 +5,38 @@ Format pencatatan berpedoman pada [Keep a Changelog](https://keepachangelog.com/
 
 ---
 
+## [0.4.0] - 2026-11-23 — Cattle CRUD Management & Initial Weight Tracking
+
+Implementasi penuh manajemen CRUD data sapi terisolasi multi-tenancy (`/api/v1/sapi`), pencatatan transaksi atomik bobot awal manual ke tabel `pengukuran`, migrasi kolom foto nullable pada Neon PostgreSQL, penyambungan antarmuka React (`CattlePage.jsx` & `CattleDetailPage.jsx`), serta endpoint pengarsipan (*soft delete* via `tanggal_keluar`).
+
+### Added
+- **Database DDL Migration & Model Nullable Columns (`app/models/pengukuran.py`):**
+  - Migrasi DDL `ALTER TABLE pengukuran ALTER COLUMN path_foto_samping DROP NOT NULL;` dan `ALTER TABLE pengukuran ALTER COLUMN path_foto_belakang DROP NOT NULL;` pada database cloud Neon PostgreSQL.
+  - Penyesuaian model SQLAlchemy `Pengukuran` agar field `path_foto_samping` dan `path_foto_belakang` bersifat nullable (`Optional[str]`), memungkinkan pencatatan bobot awal manual tanpa foto.
+- **Atomic Creation & Manual Initial Weight (`app/schemas/sapi.py` & `app/api/v1/sapi.py`):**
+  - Implementasi schema `SapiCreate` dengan validasi `bobot_awal > 0` dan `tanggal_masuk` bertipe required dengan default `date.today()`.
+  - Dukungan fleksibel alias field frontend: `tag` $\rightarrow$ `ear_tag`, `gender` $\rightarrow$ `jenis_kelamin`, `ageMonths` $\rightarrow$ `umur_bulan`, `bobotAwal`/`weight` $\rightarrow$ `bobot_awal`, dan `tanggalMasuk` $\rightarrow$ `tanggal_masuk`.
+  - Endpoint `POST /api/v1/sapi/` menyimpan data sapi dan sekaligus membuat baris pengukuran pertama pada tabel `pengukuran` dalam satu transaksi atomik SQLAlchemy, sehingga bobot awal langsung tampil sebagai `latestWeight` dan titik awal kalkulasi PBH.
+  - Resolusi cerdas nama `breed` ke foreign key `id_jenis` master ras sapi.
+- **Complete Cattle Management Endpoints (`/api/v1/sapi`):**
+  - `GET /api/v1/sapi/`: Filter status sapi (`active`, `archived`, `all`), pencarian ear tag, dan pagination.
+  - `GET /api/v1/sapi/{id_sapi}`: Detail profil sapi dilengkapi bobot terakhir dan total pengukuran.
+  - `PUT /api/v1/sapi/{id_sapi}`: Pembaruan profil sapi (jenis sapi, jenis kelamin, umur, ear tag).
+  - `PATCH /api/v1/sapi/{id_sapi}/archive`: Pengarsipan sapi (*soft delete*) dengan mencatat `tanggal_keluar = date.today()` tanpa menghilangkan riwayat pengukuran.
+  - `PATCH /api/v1/sapi/{id_sapi}/unarchive`: Pengaktifan kembali sapi dari status arsip.
+  - `DELETE /api/v1/sapi/{id_sapi}`: Penghapusan data sapi permanen beserta cascade pengukuran.
+- **Frontend Integration (`cattleService.js`, `CattlePage.jsx`, `CattleDetailPage.jsx`):**
+  - Pembuatan service adapter [cattleService.js](file:///C:/Users/THINKPAD/Documents/Banu/IPB/proyek/TimbangDulu/frontend/src/services/cattleService.js) yang memetakan response backend ke format state klien.
+  - Penambahan satu kolom input *"Bobot Awal (kg)"* pada form modal Tambah Sapi di `CattlePage.jsx` dengan pre-filled tanggal masuk hari ini.
+  - Penyambungan live data sapi aktif, diarsipkan, counter tab, dan filter ras/gender.
+  - Penyambungan `CattleDetailPage.jsx` ke live detail backend, grafik pertumbuhan Recharts, kalkulator PBH interaktif, modal edit profil, dan modal konfirmasi arsip.
+- **Comprehensive Automated & Live Test Suite:**
+  - Pembuatan test suite terdedikasi `tests/test_sapi_crud.py` (5 skenario uji: pembuatan sapi + bobot awal atomik, constraint unik ear tag per user, multi-tenancy beda peternak, update profil, pengarsipan dan filter status).
+  - Skrip pengujian live cloud [verify_neon_sapi_crud.py](file:///C:/Users/THINKPAD/Documents/Banu/IPB/proyek/TimbangDulu/backend/tests/verify_neon_sapi_crud.py) (sukses 100% pada Neon PostgreSQL).
+  - Total test suite pytest kini mencapai 22/22 passed.
+
+---
+
 ## [0.3.0] - 2026-11-22 — User Registration Flow & Neon PostgreSQL Persistence
 
 Implementasi penuh fungsionalitas registrasi pengguna baru (*user registration*) pada backend FastAPI + SQLAlchemy dengan persistensi data ke tabel `users` PostgreSQL Neon, enkripsi password via `bcrypt`, pencegahan duplikasi username, integrasi ke antarmuka formulir registrasi React tanpa mengubah styling visual, dan kompatibilitas login instan.

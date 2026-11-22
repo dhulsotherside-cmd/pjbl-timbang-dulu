@@ -17,8 +17,8 @@ class PengukuranBase(BaseModel):
     id_sapi: int
     bobot: float
     tanggal_ukur: date
-    path_foto_samping: str
-    path_foto_belakang: str
+    path_foto_samping: Optional[str] = None
+    path_foto_belakang: Optional[str] = None
 
 
 class PengukuranResponse(BaseModel):
@@ -26,8 +26,8 @@ class PengukuranResponse(BaseModel):
     id_sapi: int
     bobot: float
     tanggal_ukur: date
-    path_foto_samping: str
-    path_foto_belakang: str
+    path_foto_samping: Optional[str] = None
+    path_foto_belakang: Optional[str] = None
     created_at: datetime
     pbh_info: Optional[PBHInfo] = None
 
@@ -40,8 +40,8 @@ class PredictResponseData(BaseModel):
     id_sapi: int
     bobot_estimasi_kg: float
     tanggal_ukur: date
-    foto_samping_url: str
-    foto_belakang_url: str
+    foto_samping_url: Optional[str] = None
+    foto_belakang_url: Optional[str] = None
     pbh_info: Optional[PBHInfo] = None
 
 
