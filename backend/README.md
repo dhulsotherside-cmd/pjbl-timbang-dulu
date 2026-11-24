@@ -2,7 +2,7 @@
 
 Backend RESTful API untuk platform **TimbangDulu** — Solusi estimasi bobot sapi berbasis Computer Vision dan pemantauan Perkembangan Bobot Harian (PBH).
 
-Dibangun menggunakan **FastAPI**, **SQLAlchemy 2.0**, **PostgreSQL (Supabase)**, dan **Supabase Storage** dengan arsitektur decoupled dan pluggable Mock AI Inference.
+Dibangun menggunakan **FastAPI**, **SQLAlchemy 2.0**, **Neon Serverless PostgreSQL (Connection Pooling)**, dan **Neon Object Storage Buckets (S3-Compatible)** dengan arsitektur decoupled dan pluggable Mock AI Inference.
 
 ---
 
@@ -34,7 +34,7 @@ backend/
 │   │   ├── sapi.py
 │   │   └── pengukuran.py
 │   ├── services/                 # Business Logic & Adapters
-│   │   ├── supabase_storage.py   # Upload citra ke Supabase Storage (UUID unik)
+│   │   ├── neon_storage.py       # Upload citra ke Neon Object Storage S3-compatible (UUID unik)
 │   │   ├── pbh_calculator.py     # Kalkulator Perkembangan Bobot Harian (ADG)
 │   │   └── ai_inference.py       # CattleVisionService (Mock / ONNX Model)
 │   └── main.py                   # FastAPI Application Entrypoint & CORS Middleware
@@ -55,8 +55,9 @@ backend/
 ## 🚀 Panduan Memulai Cepat (Quick Start)
 
 ### 1. Prasyarat Lingkungan
-- Python 3.10+ (atau Python 3.13)
-- Database PostgreSQL (atau Supabase Project)
+- Python 3.10+ (disarankan 3.10 - 3.12)
+- Database Neon PostgreSQL (atau PostgreSQL lokal)
+- Neon Object Storage (Bucket `cattle-images` via `neon.ts`, opsional saat mode mock)
 
 ### 2. Konfigurasi Lingkungan (.env)
 Salin `.env.example` menjadi `.env` dan sesuaikan nilainya:
@@ -66,13 +67,15 @@ cp .env.example .env
 
 Isi konfigurasi pada berkas `.env`:
 ```env
-# Database
-DATABASE_URL="postgresql://postgres:[PASSWORD]@db.[PROJECT-REF].supabase.co:5432/postgres"
+# Database Configuration (Neon PostgreSQL - Connection Pooling)
+DATABASE_URL="postgresql://<user>:<password>@<ep-pooler-host>.us-east-2.aws.neon.tech/<dbname>?sslmode=require"
 
-# Supabase Storage
-SUPABASE_URL="https://[PROJECT-REF].supabase.co"
-SUPABASE_KEY="[SERVICE_ROLE_OR_ANON_KEY]"
-SUPABASE_BUCKET_NAME="cattle-images"
+# Neon Object Storage (S3-Compatible Bucket: cattle-images)
+AWS_ENDPOINT_URL_S3="https://<project-id>.storage.<region>.neon.tech"
+AWS_ACCESS_KEY_ID="<your-neon-storage-access-key-id>"
+AWS_SECRET_ACCESS_KEY="<your-neon-storage-secret-access-key>"
+AWS_REGION="us-east-2"
+NEON_STORAGE_BUCKET_NAME="cattle-images"
 
 # JWT
 SECRET_KEY="supersecretjwtkeyforlocaldevelopmentchangesinprod"
@@ -136,7 +139,7 @@ pytest -v
    - Validasi MIME type dan ekstensi gambar (`.jpg`, `.jpeg`, `.png`, `.webp`).
    - Eksekusi `CattleVisionService.predict_weight()`:
      - Jika `USE_MOCK_AI=True`: Latensi 0.5 - 0.8 detik, bobot 60 - 450 kg berdasarkan umur dan jenis kelamin.
-   - Upload kedua gambar dengan nama acak `uuid4().ext` ke Supabase Object Storage.
+   - Upload kedua gambar dengan nama acak `uuid4().ext` ke Neon Object Storage.
    - Simpan data pengukuran ke database PostgreSQL.
    - Secara otomatis menghitung PBH terhadap pengukuran historis sebelumnya.
 3. **Kalkulator PBH (Perkembangan Bobot Harian):**

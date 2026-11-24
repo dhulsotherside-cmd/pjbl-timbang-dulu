@@ -59,14 +59,14 @@ def analyze_database_host(target_url: str = None) -> Dict[str, Any]:
     elif raw_url.startswith("sqlite"):
         info["host_type"] = "SQLite (Local File/Memory)"
     else:
-        info["host_type"] = "PostgreSQL Standalone / Supabase"
+        info["host_type"] = "PostgreSQL Standalone / Self-hosted"
 
     return info
 
 
 def check_connection(target_engine=None) -> bool:
     """
-    Menguji konektivitas ke database PostgreSQL Neon / Supabase.
+    Menguji konektivitas ke database PostgreSQL Neon / Standalone.
     """
     active_engine = target_engine or engine
     db_info = analyze_database_host(str(active_engine.url))

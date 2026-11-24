@@ -5,6 +5,28 @@ Format pencatatan berpedoman pada [Keep a Changelog](https://keepachangelog.com/
 
 ---
 
+## [0.5.0] - 2026-11-24 — Unified Neon Object Storage Migration & Supabase Removal
+
+Migrasi penuh penyimpanan objek citra sapi ke **Neon Object Storage Buckets** (S3-compatible via `boto3`) dan eliminasi total dependensi Supabase dari seluruh proyek.
+
+### Changed
+- **S3-Compatible Neon Object Storage Adapter (`app/services/neon_storage.py`):**
+  - Implementasi adapter penyimpanan berkas citra foto samping dan belakang sapi berbasis `boto3` dengan konfigurasi path-style addressing (`Config(s3={"addressing_style": "path"})`).
+  - Mendukung lazy initialization client, validasi MIME type (`image/jpeg`, `image/png`, `image/webp`), sanitasi nama berkas acak `uuid4().ext`, dan mock storage fallback otomatis.
+  - Penghapusan berkas usang `app/services/supabase_storage.py`.
+- **API & Configuration Updates (`app/core/config.py`, `app/api/v1/pengukuran.py`):**
+  - Pembaruan konfigurasi Pydantic Settings mengganti variabel `SUPABASE_*` dengan `AWS_ENDPOINT_URL_S3`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, dan `NEON_STORAGE_BUCKET_NAME = "cattle-images"`.
+  - Penyesuaian pipeline inferensi `POST /api/v1/pengukuran/predict` untuk memanggil `upload_image_to_neon`.
+- **Declarative Infrastructure as Code (`neon.ts`):**
+  - Penambahan deklarasi bucket `"cattle-images": { access: "public_read" }` pada file konfigurasi root `neon.ts`.
+- **Dependencies & Environment:**
+  - Menghapus pustaka `supabase` dan `storage3` dari lingkungan virtual; memasang `boto3>=1.34.0`.
+  - Memperbarui `backend/requirements.txt`, `.env.example`, dan `.env`.
+- **Architecture Documentation:**
+  - Memperbarui `README.md`, `backend/README.md`, `DEV_STATE.md`, dan `PRD.md` untuk mencerminkan arsitektur 100% terpadu pada ekosistem Neon Serverless (Database + Object Storage).
+
+---
+
 ## [0.4.0] - 2026-11-23 — Cattle CRUD Management & Initial Weight Tracking
 
 Implementasi penuh manajemen CRUD data sapi terisolasi multi-tenancy (`/api/v1/sapi`), pencatatan transaksi atomik bobot awal manual ke tabel `pengukuran`, migrasi kolom foto nullable pada Neon PostgreSQL, penyambungan antarmuka React (`CattlePage.jsx` & `CattleDetailPage.jsx`), serta endpoint pengarsipan (*soft delete* via `tanggal_keluar`).

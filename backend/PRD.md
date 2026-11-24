@@ -4,7 +4,7 @@
 **Versi:** 1.0  
 **Tanggal:** 11 November 2026  
 **Target Pengembang:** Backend Software Engineer  
-**Teknologi:** Python 3.10+, FastAPI, SQLAlchemy, Pydantic, Supabase (PostgreSQL & Storage)  
+**Teknologi:** Python 3.10+, FastAPI, SQLAlchemy, Pydantic, Neon (PostgreSQL & Object Storage)  
 
 ---
 
@@ -13,7 +13,7 @@
 Sebagai pengembang backend, ruang lingkup pengerjaan mencakup:
 1. Menyediakan RESTful API berkinerja tinggi, asynchronous, dan terdokumentasi otomatis via OpenAPI (`/docs`).
 2. Mengelola autentikasi berbasis token JWT serta memastikan isolasi data multi-tenancy (pengguna hanya dapat mengakses data ternak miliknya sendiri).
-3. Menyediakan layer penyimpanan berkas citra ke Supabase Object Storage (`cattle-images`) dengan nama berkas acak UUID.
+3. Menyediakan layer penyimpanan berkas citra ke Neon Object Storage (`cattle-images`) dengan nama berkas acak UUID.
 4. Mengimplementasikan kalkulator Perkembangan Bobot Harian (PBH) beserta penanganan kondisinya.
 5. Menyediakan arsitektur *Mock AI Service* yang siap diganti (*pluggable*) saat model ONNX/PyTorch diserahkan oleh tim AI.
 
@@ -35,7 +35,7 @@ backend/
 │   │   └── security.py           # Password hash (bcrypt) & JWT encoder/decoder
 │   ├── db/
 │   │   ├── base.py               # Declarative Base
-│   │   └── session.py            # Engine & sessionmaker PostgreSQL Supabase
+│   │   └── session.py            # Engine & sessionmaker PostgreSQL Neon (Connection Pooling)
 │   ├── models/                   # SQLAlchemy ORM Models
 │   │   ├── user.py
 │   │   ├── sapi.py
@@ -45,7 +45,7 @@ backend/
 │   │   ├── sapi.py
 │   │   └── pengukuran.py
 │   ├── services/                 # Business Logic & External Adapters
-│   │   ├── supabase_storage.py   # Upload & Delete helper ke Supabase Storage
+│   │   ├── neon_storage.py       # Upload & helper ke Neon Object Storage (S3-compatible via boto3)
 │   │   ├── pbh_calculator.py     # Logika kalkulasi PBH
 │   │   └── ai_inference.py       # Vision Mock Service / Real Model Loader
 │   └── main.py                   # FastAPI app entry point, CORS, router mount
@@ -154,7 +154,7 @@ backend/
   2. Validasi format berkas citra.
   3. Panggil `CattleVisionService.predict_weight(...)` (menggunakan Mock Service saat model belum terpasang).
   4. Generate nama acak UUID untuk masing-masing berkas (`uuid4().jpg`).
-  5. Unggah kedua berkas ke Supabase Storage Bucket `cattle-images`.
+  5. Unggah kedua berkas ke Neon Object Storage Bucket `cattle-images`.
   6. Simpan baris baru ke tabel `pengukuran`.
   7. Hitung kalkulasi PBH terhadap pengukuran sebelumnya (jika ada data historis).
 * **Response (201 Created):**
@@ -167,8 +167,8 @@ backend/
       "id_sapi": 12,
       "bobot_estimasi_kg": 284.50,
       "tanggal_ukur": "2026-11-11",
-      "foto_samping_url": "https://xyz.supabase.co/storage/v1/object/public/cattle-images/8b3f.jpg",
-      "foto_belakang_url": "https://xyz.supabase.co/storage/v1/object/public/cattle-images/a91e.jpg",
+      "foto_samping_url": "https://xyz.storage.us-east-2.neon.tech/cattle-images/8b3f.jpg",
+      "foto_belakang_url": "https://xyz.storage.us-east-2.neon.tech/cattle-images/a91e.jpg",
       "pbh_info": {
         "pbh_kg_hari": 0.85,
         "selang_hari": 14,
@@ -246,20 +246,29 @@ def calculate_pbh(bobot_awal: float, bobot_akhir: float, jumlah_hari: int) -> Di
     }
 ```
 
-### 4.2. Supabase Storage Service (`app/services/supabase_storage.py`)
+### 4.2. Neon Object Storage Service (`app/services/neon_storage.py`)
 ```python
 import uuid
 import os
+import boto3
+from botocore.config import Config
 from fastapi import UploadFile, HTTPException
-from supabase import create_client, Client
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-STORAGE_BUCKET = os.getenv("STORAGE_BUCKET_NAME", "cattle-images")
+ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL_S3")
+ACCESS_KEY = os.getenv("AWS_ACCESS_KEY_ID")
+SECRET_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+STORAGE_BUCKET = os.getenv("NEON_STORAGE_BUCKET_NAME", "cattle-images")
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+s3_config = Config(s3={"addressing_style": "path"})
+s3_client = boto3.client(
+    "s3",
+    endpoint_url=ENDPOINT_URL,
+    aws_access_key_id=ACCESS_KEY,
+    aws_secret_access_key=SECRET_KEY,
+    config=s3_config
+)
 
-async def upload_image_to_supabase(file: UploadFile) -> str:
+async def upload_image_to_neon(file: UploadFile) -> str:
     content_type = file.content_type
     if not content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="Berkas harus berupa gambar valid")
@@ -269,15 +278,15 @@ async def upload_image_to_supabase(file: UploadFile) -> str:
     unique_filename = f"{uuid.uuid4()}.{file_ext}"
 
     try:
-        supabase.storage.from_(STORAGE_BUCKET).upload(
-            path=unique_filename,
-            file=file_bytes,
-            file_options={"content-type": content_type}
+        s3_client.put_object(
+            Bucket=STORAGE_BUCKET,
+            Key=unique_filename,
+            Body=file_bytes,
+            ContentType=content_type
         )
-        public_url = supabase.storage.from_(STORAGE_BUCKET).get_public_url(unique_filename)
-        return public_url
+        return f"{ENDPOINT_URL.rstrip('/')}/{STORAGE_BUCKET}/{unique_filename}"
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Gagal mengunggah citra: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Gagal mengunggah citra ke Neon Object Storage: {str(e)}")
 ```
 
 ### 4.3. AI Inference Abstraction & Mock Service (`app/services/ai_inference.py`)
@@ -326,8 +335,8 @@ class CattleVisionService:
 1. **Keamanan Data (Multi-tenancy):**
    * Semua query pembacaan, pengubahan, dan penghapusan tabel `sapi` dan `pengukuran` **wajib** menyaring kondisi `sapi.id_user == current_user.id_user`.
 2. **Latensi Layanan:**
-   * Waktu respon endpoint inferensi $\le 2\text{ detik}$ (termasuk upload ke Supabase Storage dan komputasi model).
+   * Waktu respon endpoint inferensi $\le 2\text{ detik}$ (termasuk upload ke Neon Object Storage dan komputasi model).
 3. **Penyimpanan Berkas Terstandarisasi:**
    * Nama berkas asli pengguna tidak boleh digunakan di disk atau storage; wajib menggunakan representasi UUID acak (`uuid4.ext`).
 4. **Resiliensi Koneksi Database:**
-   * Menggunakan *connection pooling* via SQLAlchemy dengan parameter `pool_size=10` dan `max_overflow=20` untuk mencegah *connection exhausted* pada Supabase Free Tier.
+   * Menggunakan *connection pooling* via SQLAlchemy dengan parameter `pool_size=10` dan `max_overflow=20` untuk mengakomodasi auto-suspend dan cold-start Neon PostgreSQL Serverless.

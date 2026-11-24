@@ -18,7 +18,7 @@
 | **Manajemen Sapi (Cattle CRUD)** | `app/models/sapi.py`<br>`app/schemas/sapi.py`<br>`app/api/v1/sapi.py` | **ACTIVE & VERIFIED** | Manajemen sapi per peternak: `POST /api/v1/sapi/` mencatat sapi + bobot awal manual ke tabel `pengukuran` dalam satu transaksi atomik. Mendukung filter `status` (active/archived/all), pencarian ear tag, update profil, dan pengarsipan (*soft delete* via `PATCH /archive`). |
 | **Database & ORM Layer** | `app/db/base.py`<br>`app/db/session.py`<br>`app/models/*`<br>`app/db/init_db.py` | **ACTIVE & VERIFIED** | Menggunakan **SQLAlchemy 2.0** DeclarativeBase dengan driver `psycopg2-binary` & `psycopg` (v3). Kolom `path_foto_samping` dan `path_foto_belakang` pada tabel `pengukuran` telah dimigrasi menjadi nullable untuk mendukung pencatatan bobot awal manual. Connection pooling dikonfigurasi (`pool_size=10`, `max_overflow=20`, `pool_recycle=300s`, `pool_pre_ping=True`, `connect_timeout=15s`) untuk resiliensi **PostgreSQL Neon**. |
 | **Frontend Cattle & Auth Wiring** | `frontend/src/services/cattleService.js`<br>`frontend/src/pages/CattlePage.jsx`<br>`frontend/src/pages/CattleDetailPage.jsx`<br>`frontend/src/pages/RegisterPage.jsx`<br>`frontend/src/pages/LoginPage.jsx` | **ACTIVE & VERIFIED** | Seluruh antarmuka manajemen ternak tersambung ke API backend: modal tambah sapi dengan input bobot awal manual dan pre-filled tanggal masuk, tab sapi aktif & arsip, overview profil, grafik pertumbuhan Recharts, kalkulator PBH interaktif, dan modal konfirmasi arsip. |
-| **Object Storage (Supabase)** | `app/services/supabase_storage.py` | **ACTIVE & VERIFIED** | Mengelola upload berkas citra sapi ke Supabase Storage Bucket `cattle-images`. Dilengkapi validasi format MIME type (`image/jpeg`, `image/png`, `image/webp`), sanitasi nama acak berbasis `uuid4().ext`, dan fallback adapter saat mode mock/lokal aktif. |
+| **Object Storage (Neon)** | `app/services/neon_storage.py` | **ACTIVE & VERIFIED** | Mengelola upload berkas citra sapi ke Neon Object Storage Bucket `cattle-images` (S3-compatible via `boto3`). Dilengkapi validasi format MIME type (`image/jpeg`, `image/png`, `image/webp`), sanitasi nama acak berbasis `uuid4().ext`, path-style addressing, dan fallback adapter saat mode mock/lokal aktif. |
 | **Estimasi & Computer Vision Layer** | `app/services/ai_inference.py` | **ACTIVE (MOCK MODE)** | Kelas `CattleVisionService` terpasang dengan toggle `USE_MOCK_AI=True`. Menghasilkan estimasi bobot realistis ($60.0 - 450.0\text{ kg}$) berdasarkan usia bulan dan jenis kelamin ternak dengan latensi simulasi $0.5 - 0.8\text{ detik}$. Siap diganti modul ONNX Runtime saat bobot model diserahkan. |
 | **Kalkulator PBH (ADG)** | `app/services/pbh_calculator.py` | **ACTIVE & VERIFIED** | Menghitung Perkembangan Bobot Harian $\text{PBH} = \frac{\Delta\text{Bobot}}{\Delta\text{Hari}}$. Memiliki guardrail $\Delta\text{Hari} > 0$ (`HTTP 400`), penentuan status pertumbuhan (`NORMAL` / `PERINGATAN_PENURUNAN`), serta saran evaluasi pakan jika PBH negatif. |
 
@@ -71,10 +71,11 @@ Dikelola melalui berkas `.env` dan diakses melalui `app/core/config.py` (Pydanti
 | `PROJECT_NAME` | `str` | `"TimbangDulu API"` | Penamaan aplikasi pada OpenAPI metadata |
 | `VERSION` | `str` | `"1.0.0"` | Nomor versi API |
 | `API_V1_STR` | `str` | `"/api/v1"` | Prefix routing v1 |
-| `DATABASE_URL` | `str` | `postgresql://...` | URI koneksi PostgreSQL (Supabase / lokal) |
-| `SUPABASE_URL` | `str` | `https://*.supabase.co` | Endpoint REST Supabase Project |
-| `SUPABASE_KEY` | `str` | `ey...` | Service Role / Anon API Key Supabase |
-| `SUPABASE_BUCKET_NAME` | `str` | `"cattle-images"` | Nama Storage Bucket berkas citra ternak |
+| `DATABASE_URL` | `str` | `postgresql://...` | URI koneksi PostgreSQL (Neon connection pooling / lokal) |
+| `AWS_ENDPOINT_URL_S3` | `str` | `https://*.neon.tech` | S3-compatible Endpoint URL Neon Object Storage |
+| `AWS_ACCESS_KEY_ID` | `str` | `[ACCESS_KEY_ID]` | Access Key ID untuk Neon Object Storage |
+| `AWS_SECRET_ACCESS_KEY` | `str` | `[SECRET_ACCESS_KEY]` | Secret Access Key untuk Neon Object Storage |
+| `NEON_STORAGE_BUCKET_NAME` | `str` | `"cattle-images"` | Nama Storage Bucket berkas citra ternak |
 | `SECRET_KEY` | `str` | `[SECRET MIN-32 CHARS]` | Kunci simetris enkripsi JWT |
 | `ALGORITHM` | `str` | `"HS256"` | Algoritma penandatanganan JWT |
 | `ACCESS_TOKEN_EXPIRE_MINUTES`| `int` | `1440` (24 jam) | Masa berlaku sesi token autentikasi |

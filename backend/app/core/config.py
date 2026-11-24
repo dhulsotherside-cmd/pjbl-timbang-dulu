@@ -24,13 +24,15 @@ class Settings(BaseSettings):
         "*"
     ]
 
-    # Database Configuration (PostgreSQL Neon / Supabase / Local)
+    # Database Configuration (PostgreSQL Neon / Local)
     DATABASE_URL: str = "postgresql://<user>:<password>@<ep-pooler-host>/<dbname>?sslmode=require"
 
-    # Supabase Storage Configuration
-    SUPABASE_URL: str = ""
-    SUPABASE_KEY: str = ""
-    SUPABASE_BUCKET_NAME: str = "cattle-images"
+    # Neon Object Storage (S3-Compatible) Configuration
+    AWS_ENDPOINT_URL_S3: str = ""
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+    AWS_REGION: str = "us-east-2"
+    NEON_STORAGE_BUCKET_NAME: str = "cattle-images"
 
     # Security & JWT Configuration
     SECRET_KEY: str = "timbangdulu-super-secret-key-for-development-2026-secure"

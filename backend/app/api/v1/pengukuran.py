@@ -17,7 +17,7 @@ from app.schemas.pengukuran import (
 )
 from app.services.ai_inference import CattleVisionService
 from app.services.pbh_calculator import calculate_pbh
-from app.services.supabase_storage import upload_image_to_supabase, validate_image_file
+from app.services.neon_storage import upload_image_to_neon, validate_image_file
 
 router = APIRouter(prefix="/pengukuran", tags=["Pengukuran & Inferensi AI"])
 
@@ -40,7 +40,7 @@ async def predict_and_record_measurement(
     1. Validasi hak akses multi-tenancy: id_sapi harus milik current_user.
     2. Validasi format berkas kedua citra (MIME type & ekstensi).
     3. Inferensi bobot melalui CattleVisionService (Mock / ONNX Model).
-    4. Pengunggahan kedua citra ke Supabase Storage (nama UUID unik).
+    4. Pengunggahan kedua citra ke Neon Object Storage (nama UUID unik).
     5. Rekam data pengukuran ke database PostgreSQL.
     6. Komputasi Perkembangan Bobot Harian (PBH) jika ada data historis sebelumnya.
     """
@@ -67,9 +67,9 @@ async def predict_and_record_measurement(
         jenis_kelamin=sapi.jenis_kelamin
     )
 
-    # 4. Upload berkas ke Supabase Object Storage
-    url_samping = await upload_image_to_supabase(foto_samping)
-    url_belakang = await upload_image_to_supabase(foto_belakang)
+    # 4. Upload berkas ke Neon Object Storage (S3-compatible)
+    url_samping = await upload_image_to_neon(foto_samping)
+    url_belakang = await upload_image_to_neon(foto_belakang)
 
     # 5. Cek pengukuran sebelumnya untuk kalkulasi PBH
     today = date.today()

@@ -8,7 +8,7 @@ database_url = settings.DATABASE_URL
 if database_url.startswith("postgresql://"):
     database_url = database_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
-# Engine configuration with connection pooling for Neon / Supabase resilience
+# Engine configuration with connection pooling for Neon PostgreSQL resilience
 connect_args = {}
 engine_kwargs = {}
 
