@@ -1,9 +1,9 @@
 # Developer State & Architecture Snapshot — TimbangDulu Backend
 
 **Berkas Dokumen:** `DEV_STATE.md`  
-**Status Layanan:** Operational (MVP Setup + Neon Pooling + Route Guards + User Auth + Cattle CRUD Active)  
-**Versi Sistem:** SemVer `0.4.0`  
-**Tanggal Snapshot Terakhir:** 23 November 2026  
+**Status Layanan:** Operational (MVP Setup + Neon Pooling + Route Guards + User Auth + Cattle CRUD + Full Neon Storage + Real AI Pipeline Active)  
+**Versi Sistem:** SemVer `0.6.0`  
+**Tanggal Snapshot Terakhir:** 26 November 2026  
 **Spesialis Dokumentasi:** Senior Backend Engineer & Database Architect  
 **Basis Rujukan:** [PRD.md](file:///C:/Users/THINKPAD/Documents/Banu/IPB/proyek/TimbangDulu/backend/PRD.md)
 
@@ -13,14 +13,15 @@
 
 | Komponen Arsitektur | Modul Implementasi | Status Operasional | Deskripsi Teknis |
 | :--- | :--- | :--- | :--- |
-| **Backend Service Runner** | `backend/main.py`<br>`backend/app/main.py` | **ACTIVE & VERIFIED** | Runner mandiri yang memungkinkan eksekusi server FastAPI cukup dengan `python main.py`. Membungkus Uvicorn programmatic runner (`127.0.0.1:8000`, `reload=True`) dengan resolusi aman `sys.path`. |
+| **Backend Service Runner** | `backend/main.py`<br>`backend/app/main.py` | **ACTIVE & VERIFIED** | Runner mandiri yang memungkinkan eksekusi server FastAPI cukup dengan `python main.py`. Membungkus Uvicorn programmatic runner (`127.0.0.1:8000`, `reload=True`) dengan resolusi aman `sys.path`. Pembersihan mount lokal `/uploads` telah selesai. |
 | **Authentication & Multi-tenancy** | `app/core/security.py`<br>`app/api/deps.py`<br>`app/api/v1/auth.py` | **ACTIVE & VERIFIED** | Autentikasi berbasis JWT (`HS256`) dengan enkripsi kata sandi `bcrypt`. Endpoint registrasi `POST /api/v1/auth/register` terintegrasi tabel `users` Neon PostgreSQL dengan proteksi duplikasi username dan rollback otomatis. Dependency `get_current_user` menegakkan isolasi multi-tenancy. |
 | **Manajemen Sapi (Cattle CRUD)** | `app/models/sapi.py`<br>`app/schemas/sapi.py`<br>`app/api/v1/sapi.py` | **ACTIVE & VERIFIED** | Manajemen sapi per peternak: `POST /api/v1/sapi/` mencatat sapi + bobot awal manual ke tabel `pengukuran` dalam satu transaksi atomik. Mendukung filter `status` (active/archived/all), pencarian ear tag, update profil, dan pengarsipan (*soft delete* via `PATCH /archive`). |
 | **Database & ORM Layer** | `app/db/base.py`<br>`app/db/session.py`<br>`app/models/*`<br>`app/db/init_db.py` | **ACTIVE & VERIFIED** | Menggunakan **SQLAlchemy 2.0** DeclarativeBase dengan driver `psycopg2-binary` & `psycopg` (v3). Kolom `path_foto_samping` dan `path_foto_belakang` pada tabel `pengukuran` telah dimigrasi menjadi nullable untuk mendukung pencatatan bobot awal manual. Connection pooling dikonfigurasi (`pool_size=10`, `max_overflow=20`, `pool_recycle=300s`, `pool_pre_ping=True`, `connect_timeout=15s`) untuk resiliensi **PostgreSQL Neon**. |
 | **Frontend Cattle & Auth Wiring** | `frontend/src/services/cattleService.js`<br>`frontend/src/pages/CattlePage.jsx`<br>`frontend/src/pages/CattleDetailPage.jsx`<br>`frontend/src/pages/RegisterPage.jsx`<br>`frontend/src/pages/LoginPage.jsx` | **ACTIVE & VERIFIED** | Seluruh antarmuka manajemen ternak tersambung ke API backend: modal tambah sapi dengan input bobot awal manual dan pre-filled tanggal masuk, tab sapi aktif & arsip, overview profil, grafik pertumbuhan Recharts, kalkulator PBH interaktif, dan modal konfirmasi arsip. |
-| **Object Storage (Neon)** | `app/services/neon_storage.py` | **ACTIVE & VERIFIED** | Mengelola upload berkas citra sapi ke Neon Object Storage Bucket `cattle-images` (S3-compatible via `boto3`). Dilengkapi validasi format MIME type (`image/jpeg`, `image/png`, `image/webp`), sanitasi nama acak berbasis `uuid4().ext`, path-style addressing, dan fallback adapter saat mode mock/lokal aktif. |
-| **Estimasi & Computer Vision Layer** | `app/services/ai_inference.py` | **ACTIVE (MOCK MODE)** | Kelas `CattleVisionService` terpasang dengan toggle `USE_MOCK_AI=True`. Menghasilkan estimasi bobot realistis ($60.0 - 450.0\text{ kg}$) berdasarkan usia bulan dan jenis kelamin ternak dengan latensi simulasi $0.5 - 0.8\text{ detik}$. Siap diganti modul ONNX Runtime saat bobot model diserahkan. |
+| **Object Storage (Neon)** | `app/services/neon_storage.py` | **ACTIVE (FULL NEON - STRICT)** | Penyimpanan citra ternak **Full Neon Object Storage (Bucket: `cattle-images`)** berbasis S3 via `boto3`. Menerapkan validasi fail-fast (`RuntimeError` jika kredensial tidak lengkap), `signature_version="s3v4"`, dan path-style addressing. Format path terstruktur `sapi/<id_sapi>/<sudut>_<uuid>.<ext>`, menyediakan Public Read URL dan Presigned URL, serta rollback compensation via `delete_object`. Seluruh fallback disk lokal telah dieliminasi. |
+| **Estimasi & Computer Vision Layer** | `app/services/ai_inference.py` | **ACTIVE & INTEGRATED** | Pipeline 3-tahap computer vision: (1) Classifier sapi biner (`sapibukan_cifor.keras`), (2) Segmentasi masker siluet (`best_seg_model.keras`), dan (3) Regresi estimasi bobot 4-kanal RGB+Masker (`best_reg_model.keras`). Mendukung penimbangan dengan 1 foto (samping atau belakang). |
 | **Kalkulator PBH (ADG)** | `app/services/pbh_calculator.py` | **ACTIVE & VERIFIED** | Menghitung Perkembangan Bobot Harian $\text{PBH} = \frac{\Delta\text{Bobot}}{\Delta\text{Hari}}$. Memiliki guardrail $\Delta\text{Hari} > 0$ (`HTTP 400`), penentuan status pertumbuhan (`NORMAL` / `PERINGATAN_PENURUNAN`), serta saran evaluasi pakan jika PBH negatif. |
+| **Dashboard Agregasi** | `app/api/v1/dashboard.py` | **ACTIVE & VERIFIED** | Endpoint `GET /api/v1/dashboard` menghitung populasi ternak aktif, rasio jantan/betina, total penimbangan, rata-rata bobot kandang, dan tren bulanan. |
 
 ---
 
@@ -79,20 +80,25 @@ Dikelola melalui berkas `.env` dan diakses melalui `app/core/config.py` (Pydanti
 | `SECRET_KEY` | `str` | `[SECRET MIN-32 CHARS]` | Kunci simetris enkripsi JWT |
 | `ALGORITHM` | `str` | `"HS256"` | Algoritma penandatanganan JWT |
 | `ACCESS_TOKEN_EXPIRE_MINUTES`| `int` | `1440` (24 jam) | Masa berlaku sesi token autentikasi |
-| `USE_MOCK_AI` | `bool` | `True` | Toggle sakelar mode simulasi inferensi AI |
+| `CATTLE_CLASSIFIER_PATH` | `Path` | `model_prediksi/sapibukan_cifor.keras` | Path berkas model klasifikasi sapi biner |
+| `CATTLE_SEGMENTATION_PATH` | `Path` | `model_prediksi/best_seg_model.keras` | Path berkas model segmentasi citra |
+| `CATTLE_REGRESSION_PATH` | `Path` | `model_prediksi/best_reg_model.keras` | Path berkas model regresi estimasi bobot |
 
 ---
 
 ## 4. Status Pengujian Otomatis (Automated Test Suite)
 
-- **Total Test Cases:** 22 passed, 0 failed.
+- **Total Test Cases:** 34 passed, 2 skipped, 0 failed.
 - **Lokasi Berkas Uji:** `tests/`
+  - `tests/test_photo_storage.py`: Pengujian Full Neon Object Storage (mock S3 upload path-style `sapi/<id_sapi>/`, fail-fast `RuntimeError` saat kredensial kosong, presigned URL generator, validasi MIME, dan rollback cleanup via `delete_object`).
+  - `tests/verify_neon_storage.py`: Skrip verifikasi live smoke test ke Neon Object Storage aktif (`put_object`, `head_object`, presigned & public GET URL, dan `delete_object` cleanup — sukses 100%).
   - `tests/test_sapi_crud.py`: Pengujian transaksi atomik simpan sapi + bobot awal, constraint unik ear tag per user, isolasi multi-tenancy beda peternak, update profil, pengarsipan (*status transition* active/archived), dan unarchive.
   - `tests/test_registration.py`: Pengujian siklus registrasi lengkap (status 201, verifikasi hash bcrypt di DB, penolakan duplikasi 400, fallback email frontend, validasi panjang password).
   - `tests/test_pbh.py`: Validasi rumus ADG, status alert penurunan, dan guardrail $\Delta\text{Hari} \le 0$.
   - `tests/test_security.py`: Pengujian hashing password bcrypt dan siklus JWT sign-decode.
-  - `tests/test_ai_inference.py`: Pengujian latensi simulasi dan rentang bobot $60 - 450\text{ kg}$.
-  - `tests/test_api_integration.py`: Alur menyeluruh registrasi $\rightarrow$ login $\rightarrow$ isolasi multi-tenant $\rightarrow$ penambahan sapi dengan bobot awal $\rightarrow$ prediksi 2 titik $\rightarrow$ inspeksi riwayat & PBH.
+  - `tests/test_ai_inference.py`: Pengujian alur 1-foto inferensi (klasifikasi, segmentasi, regresi) dan penolakan foto bukan sapi (HTTP 422).
+  - `tests/test_dashboard.py`: Pengujian agregasi data dashboard per peternak.
+  - `tests/test_api_integration.py`: Alur menyeluruh registrasi $\rightarrow$ login $\rightarrow$ isolasi multi-tenant $\rightarrow$ penambahan sapi dengan bobot awal $\rightarrow$ prediksi 1 foto $\rightarrow$ inspeksi riwayat & PBH.
   - `tests/verify_neon_sapi_crud.py`: Skrip verifikasi live end-to-end CRUD data sapi langsung ke database Neon PostgreSQL aktif.
   - `tests/verify_neon_registration.py`: Skrip verifikasi live end-to-end registrasi langsung ke database Neon PostgreSQL aktif.
 

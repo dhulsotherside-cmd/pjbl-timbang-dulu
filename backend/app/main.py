@@ -2,11 +2,10 @@ from contextlib import asynccontextmanager
 import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 
 from app.api.v1 import api_v1_router
 from app.core.config import settings
-from app.services.neon_storage import LOCAL_URL_PREFIX, UPLOAD_DIR
+from app.services.neon_storage import validate_storage_config
 
 # Setup logging
 logging.basicConfig(
@@ -23,9 +22,12 @@ async def lifespan(app: FastAPI):
     """
     logger.info("Memulai %s v%s...", settings.PROJECT_NAME, settings.VERSION)
     logger.info("Model klasifikasi: %s", settings.CATTLE_CLASSIFIER_PATH)
-    if not settings.AWS_ENDPOINT_URL_S3:
-        UPLOAD_DIR.mkdir(exist_ok=True)
     logger.info("Database URL configured: %s", bool(settings.DATABASE_URL))
+    try:
+        validate_storage_config()
+        logger.info("Neon Object Storage (bucket: %s) terkonfigurasi (mode: strict).", settings.NEON_STORAGE_BUCKET_NAME)
+    except Exception as exc:
+        logger.warning("Peringatan konfigurasi storage: %s", exc)
     yield
     logger.info("Menghentikan %s...", settings.PROJECT_NAME)
 
@@ -54,8 +56,6 @@ app.add_middleware(
 
 # Hubungkan router versi 1
 app.include_router(api_v1_router, prefix=settings.API_V1_STR)
-if not settings.AWS_ENDPOINT_URL_S3:
-    app.mount(LOCAL_URL_PREFIX.rstrip("/"), StaticFiles(directory=UPLOAD_DIR, check_dir=False), name="uploads")
 
 
 @app.get("/", tags=["Health Check"])

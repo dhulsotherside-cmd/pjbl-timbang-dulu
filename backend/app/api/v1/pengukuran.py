@@ -68,7 +68,11 @@ async def predict_and_record_measurement(
             raise HTTPException(409, "Sapi sudah diarsipkan.")
 
     weight = await CattleVisionService.predict_weight(photo=photo, view=view)
-    photo_url = await upload_image_to_neon(photo)
+    photo_url = await upload_image_to_neon(
+        photo,
+        id_sapi=sapi.id_sapi if id_sapi is not None else None,
+        view=view,
+    )
     today = date.today()
     pbh = None
     try:

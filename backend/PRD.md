@@ -13,9 +13,9 @@
 Sebagai pengembang backend, ruang lingkup pengerjaan mencakup:
 1. Menyediakan RESTful API berkinerja tinggi, asynchronous, dan terdokumentasi otomatis via OpenAPI (`/docs`).
 2. Mengelola autentikasi berbasis token JWT serta memastikan isolasi data multi-tenancy (pengguna hanya dapat mengakses data ternak miliknya sendiri).
-3. Menyediakan layer penyimpanan berkas citra ke Neon Object Storage (`cattle-images`) dengan nama berkas acak UUID.
+3. Menyediakan layer penyimpanan berkas citra ke Full Neon Object Storage (`cattle-images`, access: `public_read`) dengan arsitektur fail-fast, format path terstruktur (`sapi/<id_sapi>/<sudut>_<uuid>.<ext>`), dan rollback compensation.
 4. Mengimplementasikan kalkulator Perkembangan Bobot Harian (PBH) beserta penanganan kondisinya.
-5. Menyediakan arsitektur *Mock AI Service* yang siap diganti (*pluggable*) saat model ONNX/PyTorch diserahkan oleh tim AI.
+5. Mengintegrasikan pipeline inferensi Computer Vision (Klasifikasi, Segmentasi, dan Regresi Bobot).
 
 ---
 
@@ -45,9 +45,10 @@ backend/
 │   │   ├── sapi.py
 │   │   └── pengukuran.py
 │   ├── services/                 # Business Logic & External Adapters
-│   │   ├── neon_storage.py       # Upload & helper ke Neon Object Storage (S3-compatible via boto3)
+│   │   ├── neon_storage.py       # Full Neon Object Storage (S3-compatible via boto3, fail-fast, no local fallback)
 │   │   ├── pbh_calculator.py     # Logika kalkulasi PBH
-│   │   └── ai_inference.py       # Vision Mock Service / Real Model Loader
+│   │   ├── cattle_registration.py# Helper registrasi atomik & resolusi jenis sapi
+│   │   └── ai_inference.py       # Pipeline Computer Vision: Classifier, Segmentasi, Regresi Bobot
 │   └── main.py                   # FastAPI app entry point, CORS, router mount
 ├── .env.example
 ├── Dockerfile
@@ -146,17 +147,28 @@ backend/
 * **Endpoint:** `POST /api/v1/pengukuran/predict`
 * **Content-Type:** `multipart/form-data`
 * **Form Data:**
-  * `id_sapi` (int): ID sapi yang diukur.
-  * `foto_samping` (UploadFile): Berkas citra sisi lateral tubuh (.jpg/.jpeg/.png).
-  * `foto_belakang` (UploadFile): Berkas citra sisi belakang tubuh (.jpg/.jpeg/.png).
+  * Opsi Sapi Terdaftar:
+    * `id_sapi` (int, opsional): ID sapi yang diukur.
+  * Opsi Onboarding Sapi Baru (One-Step):
+    * `ear_tag` (str, opsional): Tag telinga sapi baru.
+    * `id_jenis` (int, opsional): ID jenis/ras sapi.
+    * `jenis_kelamin` (str, opsional): "Jantan" atau "Betina".
+    * `umur_bulan` (int, opsional): Umur sapi dalam bulan.
+  * Berkas Citra (Tepat 1 foto):
+    * `foto_samping` (UploadFile, opsional): Citra lateral sapi.
+    * `foto_belakang` (UploadFile, opsional): Citra posterior sapi.
 * **Alur Eksekusi Service:**
-  1. Validasi kepemilikan: Pastikan `id_sapi` terdaftar di bawah `current_user.id_user`.
-  2. Validasi format berkas citra.
-  3. Panggil `CattleVisionService.predict_weight(...)` (menggunakan Mock Service saat model belum terpasang).
-  4. Generate nama acak UUID untuk masing-masing berkas (`uuid4().jpg`).
-  5. Unggah kedua berkas ke Neon Object Storage Bucket `cattle-images`.
-  6. Simpan baris baru ke tabel `pengukuran`.
-  7. Hitung kalkulasi PBH terhadap pengukuran sebelumnya (jika ada data historis).
+  1. Validasi masukan: Pastikan tepat 1 foto diunggah (`foto_samping` ATAU `foto_belakang`).
+  2. Validasi kepemilikan sapi (`id_sapi`) atau verifikasi identitas sapi baru (`ear_tag` belum terdaftar pada user).
+  3. Validasi format berkas citra (JPG, PNG, WebP).
+  4. Eksekusi `CattleVisionService.predict_weight(...)`:
+     - Klasifikasi: Verifikasi objek foto adalah sapi (ambang $\ge 0.5$, HTTP 422 jika non-sapi).
+     - Segmentasi: Menghasilkan masker biner siluet sapi.
+     - Regresi: Menghasilkan estimasi bobot ($\text{kg}$) berbasis 4-kanal (RGB + Masker).
+  5. Unggah citra ke Full Neon Object Storage (`cattle-images`) dengan struktur path `sapi/<id_sapi>/<sudut>_<uuid>.<ext>` atau `sapi/onboarding/<sudut>_<uuid>.<ext>`.
+  6. Simpan baris baru ke tabel `pengukuran` (dan tabel `sapi` jika onboarding sapi baru) secara atomik.
+  7. Hitung kalkulasi PBH terhadap pengukuran historis sebelumnya.
+  8. Rollback compensation: Jika database gagal commit, berkas di Neon Object Storage otomatis dibersihkan via `delete_object`.
 * **Response (201 Created):**
   ```json
   {
@@ -166,9 +178,9 @@ backend/
       "id_pengukuran": 105,
       "id_sapi": 12,
       "bobot_estimasi_kg": 284.50,
-      "tanggal_ukur": "2026-11-11",
-      "foto_samping_url": "https://xyz.storage.us-east-2.neon.tech/cattle-images/8b3f.jpg",
-      "foto_belakang_url": "https://xyz.storage.us-east-2.neon.tech/cattle-images/a91e.jpg",
+      "tanggal_ukur": "2026-11-26",
+      "foto_samping_url": "https://xyz.storage.us-east-2.neon.tech/cattle-images/sapi/12/samping_8b3f.jpg",
+      "foto_belakang_url": null,
       "pbh_info": {
         "pbh_kg_hari": 0.85,
         "selang_hari": 14,

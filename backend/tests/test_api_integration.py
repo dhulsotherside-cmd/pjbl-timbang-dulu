@@ -125,13 +125,34 @@ def test_sapi_multi_tenancy_and_crud():
 
 
 @pytest.fixture
-def photo_prediction(monkeypatch, tmp_path):
+def photo_prediction(monkeypatch):
+    class StorageTracker:
+        def __init__(self):
+            self.uploaded = {}
+
+        def iterdir(self):
+            return list(self.uploaded.keys())
+
+    tracker = StorageTracker()
+
+    class MockS3Client:
+        def put_object(self, Bucket, Key, Body, ContentType=None):
+            tracker.uploaded[Key] = Body
+            return {"ResponseMetadata": {"HTTPStatusCode": 200}}
+
+        def delete_object(self, Bucket, Key):
+            tracker.uploaded.pop(Key, None)
+            return {"ResponseMetadata": {"HTTPStatusCode": 204}}
+
+    mock_client = MockS3Client()
+
     async def predict(**kwargs):
         return 222.75
+
     monkeypatch.setattr(CattleVisionService, "predict_weight", predict)
-    monkeypatch.setattr(neon_storage, "UPLOAD_DIR", tmp_path)
-    monkeypatch.setattr(neon_storage, "get_neon_s3_client", lambda: None)
-    return tmp_path
+    monkeypatch.setattr(neon_storage, "get_neon_s3_client", lambda: mock_client)
+    monkeypatch.setattr(neon_storage, "validate_storage_config", lambda: None)
+    return tracker
 
 
 def test_pengukuran_prediction_and_pbh(photo_prediction):
@@ -221,7 +242,7 @@ def test_new_photo_measurement_is_atomic_and_visible(photo_prediction, monkeypat
         patch.setattr(CattleVisionService, "predict_weight", reject)
         assert client.post(url, data=data, files=files, headers=headers).status_code == 422
     with monkeypatch.context() as patch:
-        async def fail_rear(photo):
+        async def fail_rear(photo, *args, **kwargs):
             raise HTTPException(503, "Foto gagal disimpan.")
         patch.setattr(pengukuran, "upload_image_to_neon", fail_rear)
         assert client.post(url, data=data, files=files, headers=headers).status_code == 503

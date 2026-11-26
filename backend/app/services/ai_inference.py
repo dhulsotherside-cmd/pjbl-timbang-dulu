@@ -22,21 +22,34 @@ _model_lock = Lock()
 
 
 def _prepare_photo(stream: BinaryIO, view: str) -> tuple[Image.Image, np.ndarray]:
-    import tensorflow as tf
+    try:
+        import tensorflow as tf
+        has_tf = True
+    except ImportError:
+        has_tf = False
 
     try:
         stream.seek(0)
         with Image.open(stream, formats=("JPEG", "PNG", "WEBP")) as source:
             photo = ImageOps.exif_transpose(source).convert("RGB")
             # Keep Pillow RGB for torchvision and use the notebook's JPEG decoder for Keras.
-            if source.format == "JPEG" and source.getexif().get(274, 1) == 1:
+            if has_tf and source.format == "JPEG" and source.getexif().get(274, 1) == 1:
                 stream.seek(0)
                 pixels = tf.io.decode_jpeg(stream.read(), channels=3)
-            else:
+                rgb = tf.image.resize(pixels, IMAGE_SIZE)[None].numpy()
+            elif has_tf:
                 pixels = np.asarray(photo)
-            return photo, tf.image.resize(pixels, IMAGE_SIZE)[None].numpy()
-    except (OSError, ValueError, Image.DecompressionBombError, tf.errors.InvalidArgumentError) as exc:
+                rgb = tf.image.resize(pixels, IMAGE_SIZE)[None].numpy()
+            else:
+                resized = photo.resize(IMAGE_SIZE, Image.Resampling.BILINEAR)
+                rgb = np.asarray(resized, dtype=np.float32)[None]
+            return photo, rgb
+    except (OSError, ValueError, Image.DecompressionBombError) as exc:
         raise HTTPException(422, f"Foto {view} tidak dapat dibaca. Silakan unggah ulang.") from exc
+    except Exception as exc:
+        if "InvalidArgumentError" in type(exc).__name__:
+            raise HTTPException(422, f"Foto {view} tidak dapat dibaca. Silakan unggah ulang.") from exc
+        raise
     finally:
         stream.seek(0)
 

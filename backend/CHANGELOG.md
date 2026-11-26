@@ -5,6 +5,30 @@ Format pencatatan berpedoman pada [Keep a Changelog](https://keepachangelog.com/
 
 ---
 
+## [0.6.0] - 2026-11-26 — Full Neon Object Storage (Strict/Fail-Fast) & Pipeline Stabilization
+
+Transisi arsitektur penyimpanan citra dari mode Hibrida (S3 + fallback disk lokal) menjadi **Full Neon Object Storage (Strict/Fail-Fast)** pada bucket `cattle-images`, pembersihan jalur lokal, dan stabilisasi pipeline computer vision.
+
+### Changed
+- **Full Neon Object Storage Adapter (`app/services/neon_storage.py`):**
+  - **Eliminasi Fallback Lokal:** Menghapus seluruh mekanisme penyimpanan ke disk lokal (`backend/uploads/`) dan StaticFiles mount.
+  - **Fail-Fast Validation:** Validasi langsung melempar `RuntimeError` jika salah satu dari `AWS_ENDPOINT_URL_S3`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, atau `NEON_STORAGE_BUCKET_NAME` belum diisi.
+  - **Konfigurasi Boto3 S3-Compatible:** Menegakkan `signature_version="s3v4"`, `s3={"addressing_style": "path"}`, dan retry policy standar.
+  - **Struktur Path Berkas Rapi:** Penyimpanan citra terstruktur per sapi (`sapi/<id_sapi>/<sudut>_<uuid>.<ext>`) dan onboarding sapi baru (`sapi/onboarding/<sudut>_<uuid>.<ext>`).
+  - **Mekanisme Akses Citra & Rollback:** Mendukung `get_public_url` (bucket berakses public_read), `generate_presigned_url` (URL bertanda tangan aman), serta fungsi rollback kompensasi `delete_uploaded_image` yang memanggil `delete_object` langsung ke Neon Object Storage.
+- **Pembersihan Jalur Lokal (`app/main.py` & `.gitignore`):**
+  - Menghapus mounting `app.mount("/uploads", StaticFiles(...))` dan pembuatan folder lokal pada startup lifespan.
+  - Memastikan `backend/uploads/` dan `uploads/` terdaftar pada `.gitignore`.
+- **API Pengukuran Integration (`app/api/v1/pengukuran.py`):**
+  - Parameter `upload_image_to_neon` diperbarui dengan menyertakan `id_sapi` dan `view` (sudut foto) untuk menghasilkan struktur direktori S3 yang rapi.
+- **Konfigurasi Lingkungan (`.env.example`):**
+  - Menegaskan status wajib kredensial Neon Object Storage untuk seluruh deployment backend.
+- **Live Smoke Test Suite & Unit Test (`tests/verify_neon_storage.py`, `tests/test_photo_storage.py`):**
+  - Penambahan skrip live smoke test `tests/verify_neon_storage.py` yang memvalidasi 4 pilar: `put_object`, `head_object`, akses presigned & public URL (HTTP 200), dan `delete_object` cleanup.
+  - Pembaruan unit test storage dengan mocking S3 client penuh sehingga seluruh 34 test pytest lulus tanpa dependensi storage lokal.
+
+---
+
 ## [0.5.0] - 2026-11-24 — Unified Neon Object Storage Migration & Supabase Removal
 
 Migrasi penuh penyimpanan objek citra sapi ke **Neon Object Storage Buckets** (S3-compatible via `boto3`) dan eliminasi total dependensi Supabase dari seluruh proyek.
