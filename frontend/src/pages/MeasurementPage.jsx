@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, ArrowRight, Check, PlusCircle, RefreshCw, Search } from 'lucide-react'
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  Info,
+  PlusCircle,
+  RefreshCw,
+  Search,
+  Sparkles,
+} from 'lucide-react'
 import cattleService from '../services/cattleService'
 import styles from './MeasurementPage.module.css'
 
@@ -20,12 +29,13 @@ function errorMessage(error, fallback) {
 function PhotoPreview({ file, label }) {
   const image = useRef(null)
   useEffect(() => {
+    if (!file) return
     const url = URL.createObjectURL(file)
-    image.current.src = url
+    if (image.current) image.current.src = url
     return () => URL.revokeObjectURL(url)
   }, [file])
 
-  return <img ref={image} alt={label} />
+  return <img ref={image} alt={label || 'Foto sapi'} />
 }
 
 export default function MeasurementPage() {
@@ -37,11 +47,15 @@ export default function MeasurementPage() {
   const [selectedCow, setSelectedCow] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [newCow, setNewCow] = useState(emptyCow)
+
+  // Photo & two-step commit states
   const [photo, setPhoto] = useState(null)
-  const [view, setView] = useState('samping')
-  const photoLabel = view === 'samping' ? 'Foto Samping' : 'Foto Belakang'
-  const [result, setResult] = useState(null)
+  const [estimatedWeight, setEstimatedWeight] = useState(null)
+  const [finalResult, setFinalResult] = useState(null)
+
+  // Loading & staged indicator states
   const [busy, setBusy] = useState(false)
+  const [loadingStage, setLoadingStage] = useState('')
   const [error, setError] = useState('')
 
   const isNew = measurementType === 'new'
@@ -97,25 +111,81 @@ export default function MeasurementPage() {
     setError('')
   }
 
-  async function recordMeasurement() {
+  // Tahap 1: Estimasi Bobot Berbasis AI (Preview)
+  async function handleEstimateWeight() {
     if (busy || !cow || !photo) return
     setBusy(true)
     setError('')
+    setLoadingStage('Memverifikasi citra foto sapi…')
+
+    const timer1 = setTimeout(() => {
+      setLoadingStage('Mensegmentasi kontur tubuh sapi…')
+    }, 900)
+
+    const timer2 = setTimeout(() => {
+      setLoadingStage('Menghitung estimasi bobot sapi…')
+    }, 1800)
+
     try {
-      const measurement = await cattleService.recordPhotoMeasurement({
-        cattleId: isNew ? null : selectedCow,
-        newCattle: isNew ? newCow : null,
-        photo,
-        view,
-      })
-      setResult(measurement)
-      goToStep(4)
+      const preview = await cattleService.predictWeight(photo)
+      clearTimeout(timer1)
+      clearTimeout(timer2)
+      const weight = Number(preview.estimated_weight_kg ?? preview.bobot)
+      setEstimatedWeight(weight)
+      goToStep(4) // Beralih ke layar review two-step commit
     } catch (err) {
-      setError(errorMessage(err, err.response
-        ? 'Pengukuran gagal diproses. Silakan coba lagi.'
-        : 'Koneksi ke server terputus. Periksa riwayat pengukuran sebelum mengirim ulang.'))
+      clearTimeout(timer1)
+      clearTimeout(timer2)
+      setError(
+        errorMessage(
+          err,
+          err.response
+            ? 'Estimasi bobot gagal diproses. Pastikan foto sapi tampak jelas.'
+            : 'Koneksi ke server terputus. Silakan coba lagi.'
+        )
+      )
     } finally {
       setBusy(false)
+      setLoadingStage('')
+    }
+  }
+
+  // Ulangi estimasi: reset foto & estimasi tanpa menghapus data sapi terpilih/terisi
+  function handleRetryEstimate() {
+    setPhoto(null)
+    setEstimatedWeight(null)
+    setError('')
+    goToStep(3)
+  }
+
+  // Tahap 2: Simpan Permanen (Commit) ke DB & Neon Object Storage (.webp)
+  async function handleSaveMeasurement() {
+    if (busy || !cow || !photo || estimatedWeight === null) return
+    setBusy(true)
+    setError('')
+    setLoadingStage('Mengompresi ke WebP & menyimpan data ke cloud Neon…')
+
+    try {
+      const saved = await cattleService.savePhotoMeasurement({
+        photo,
+        weight: estimatedWeight,
+        cattleId: isNew ? null : selectedCow,
+        newCattle: isNew ? newCow : null,
+      })
+      setFinalResult(saved)
+      goToStep(5) // Berpindah ke layar sukses
+    } catch (err) {
+      setError(
+        errorMessage(
+          err,
+          err.response
+            ? 'Gagal menyimpan pengukuran. Silakan coba lagi.'
+            : 'Koneksi server terputus saat menyimpan.'
+        )
+      )
+    } finally {
+      setBusy(false)
+      setLoadingStage('')
     }
   }
 
@@ -125,8 +195,8 @@ export default function MeasurementPage() {
     setSearchQuery('')
     setSelectedCow('')
     setPhoto(null)
-    setResult(null)
-    setView('samping')
+    setEstimatedWeight(null)
+    setFinalResult(null)
     goToStep(1)
   }
 
@@ -134,12 +204,13 @@ export default function MeasurementPage() {
     <main className={styles.page}>
       <div className={styles.pageHeader}>
         <div>
-          <span className={styles.eyebrow}>PENGUKURAN</span>
+          <span className={styles.eyebrow}>PENGUKURAN BOBOT</span>
           <h1>Ukur Bobot Sapi</h1>
-          <p>Mulai pengukuran untuk sapi yang sudah terdaftar atau daftarkan sapi baru.</p>
+          <p>Estimasi bobot ternak akurat berbasis Computer Vision dengan alur tinjau dua tahap (Two-Step Commit).</p>
         </div>
       </div>
 
+      {/* LANGKAH 1: Pilih Tipe Sapi */}
       {step === 1 && (
         <section className={styles.selectionSection}>
           <div className={styles.sectionHeading}>
@@ -180,90 +251,27 @@ export default function MeasurementPage() {
         </section>
       )}
 
-      {step === 2 && !isNew && (
+      {/* LANGKAH 2: Pilih / Daftarkan Sapi */}
+      {step === 2 && (
         <section className={styles.selectionSection}>
           <div className={styles.stepHeader}>
-            <button type="button" className={styles.backButton} onClick={() => goToStep(1)}>
+            <button type="button" className={styles.stepBack} disabled={busy} onClick={() => goToStep(1)}>
               <ArrowLeft size={16} /> Kembali
             </button>
-            <span className={styles.eyebrow}>LANGKAH 02</span>
-            <h2>Pilih sapi yang akan diukur</h2>
+            <h2>{isNew ? 'Daftarkan sapi baru' : 'Pilih sapi dari peternakan'}</h2>
           </div>
-          <div className={styles.searchBox}>
-            <Search size={18} />
-            <input type="search" aria-label="Cari sapi" placeholder="Cari ID sapi atau ear tag..."
-              value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} />
-          </div>
-          <div className={styles.cattleList}>
-            {filteredCattle.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                aria-pressed={item.id === selectedCow}
-                className={[styles.cattleOption, item.id === selectedCow && styles.cattleOptionSelected].filter(Boolean).join(' ')}
-                onClick={() => {
-                  if (item.id !== selectedCow) setPhoto(null)
-                  setSelectedCow(item.id)
-                }}
-              >
-                <div className={styles.cattleIdentity}>
-                  <div className={styles.cattleAvatar}>{item.tag.slice(-2)}</div>
-                  <div><strong>{item.tag}</strong><span>ID {item.id} · {item.breed}</span></div>
-                </div>
-                <div className={styles.cattleInfo}>
-                  <div><span>Jenis kelamin</span><strong>{item.gender}</strong></div>
-                  <div><span>Umur</span><strong>{item.ageMonths} bulan</strong></div>
-                  <div>
-                    <span>Bobot terakhir</span>
-                    <strong className={styles.cattleWeight}>
-                      {item.latestWeight == null ? 'Belum ada data' : weightFormat.format(item.latestWeight) + ' kg'}
-                    </strong>
-                  </div>
-                </div>
-                <div className={styles.cattleCheck}>{selectedCow === item.id && <Check size={17} />}</div>
-              </button>
-            ))}
-            {filteredCattle.length === 0 && (
-              <p className={styles.emptySearch}>
-                {activeCattle.length ? 'Tidak ada sapi yang cocok dengan pencarian.' : 'Belum ada sapi aktif.'}
-              </p>
-            )}
-          </div>
-          <div className={styles.selectionFooter}>
-            <button type="button" className={styles.continueButton} disabled={!cow} onClick={() => goToStep(3)}>
-              Lanjutkan <ArrowRight size={16} />
-            </button>
-          </div>
-        </section>
-      )}
 
-      {step === 2 && isNew && (
-        <section className={styles.selectionSection}>
-          <div className={styles.stepHeader}>
-            <button type="button" className={styles.backButton} onClick={() => goToStep(1)}>
-              <ArrowLeft size={16} /> Kembali
-            </button>
-            <span className={styles.eyebrow}>LANGKAH 02</span>
-            <h2>Daftarkan Sapi Baru</h2>
-          </div>
-          <form onSubmit={(event) => {
-            event.preventDefault()
-            if (!newCow.tag.trim()) {
-              setError('Isi ear tag sapi terlebih dahulu.')
-              return
-            }
-            updateCow('tag', newCow.tag.trim())
-            goToStep(3)
-          }}>
+          {isNew ? (
             <div className={styles.formGrid}>
               <div className={styles.formField}>
-                <label htmlFor="cow-tag">Ear Tag</label>
-                <input id="cow-tag" required maxLength={50} placeholder="Contoh: TAG-029"
-                  value={newCow.tag} onChange={(event) => updateCow('tag', event.target.value)} />
+                <label htmlFor="cow-tag">Nomor Ear Tag *</label>
+                <input id="cow-tag" value={newCow.tag} placeholder="Contoh: ST-042" disabled={busy}
+                  onChange={(event) => updateCow('tag', event.target.value)} />
               </div>
               <div className={styles.formField}>
-                <label htmlFor="cow-breed">Jenis Sapi</label>
-                <select id="cow-breed" required value={newCow.breedId} onChange={(event) => updateCow('breedId', event.target.value)}>
+                <label htmlFor="cow-breed">Jenis Sapi *</label>
+                <select id="cow-breed" value={newCow.breedId} disabled={busy}
+                  onChange={(event) => updateCow('breedId', event.target.value)}>
                   <option value="">Pilih jenis sapi</option>
                   {breeds.map((item) => (
                     <option key={item.id_jenis} value={item.id_jenis}>{item.nama_jenis}</option>
@@ -271,36 +279,76 @@ export default function MeasurementPage() {
                 </select>
               </div>
               <div className={styles.formField}>
-                <label htmlFor="cow-gender">Jenis Kelamin</label>
-                <select id="cow-gender" required value={newCow.gender} onChange={(event) => updateCow('gender', event.target.value)}>
+                <label htmlFor="cow-gender">Jenis Kelamin *</label>
+                <select id="cow-gender" value={newCow.gender} disabled={busy}
+                  onChange={(event) => updateCow('gender', event.target.value)}>
                   <option value="">Pilih jenis kelamin</option>
-                  <option>Jantan</option>
-                  <option>Betina</option>
+                  <option value="Jantan">Jantan</option>
+                  <option value="Betina">Betina</option>
                 </select>
               </div>
               <div className={styles.formField}>
-                <label htmlFor="cow-age">Umur Sapi (Bulan)</label>
-                <input id="cow-age" type="number" required min="1" max="360" step="1" placeholder="Contoh: 18"
-                  value={newCow.ageMonths} onChange={(event) => updateCow('ageMonths', event.target.value)} />
+                <label htmlFor="cow-age">Umur (Bulan) *</label>
+                <input id="cow-age" type="number" min="1" max="360" value={newCow.ageMonths} placeholder="Contoh: 18" disabled={busy}
+                  onChange={(event) => updateCow('ageMonths', event.target.value)} />
               </div>
             </div>
-            {error && <p className={styles.formError} role="alert">{error}</p>}
-            <div className={styles.selectionFooter}>
-              <button type="submit" className={styles.continueButton}>Lanjutkan <ArrowRight size={16} /></button>
+          ) : (
+            <div>
+              <div className={styles.searchBox}>
+                <Search size={18} />
+                <input value={searchQuery} placeholder="Cari ear tag atau ID sapi…" disabled={busy}
+                  onChange={(event) => setSearchQuery(event.target.value)} />
+              </div>
+              <div className={styles.cowList}>
+                {filteredCattle.map((item) => (
+                  <button key={item.id} type="button"
+                    className={[styles.cowCard, selectedCow === item.id && styles.selected].filter(Boolean).join(' ')}
+                    disabled={busy} onClick={() => { setSelectedCow(item.id); setError('') }}>
+                    <div className={styles.cowCardHeader}>
+                      <strong>{item.tag}</strong>
+                      <span className={styles.cowId}>ID #{item.id}</span>
+                    </div>
+                    <p>{item.breed} · {item.gender} · {item.ageMonths} bulan</p>
+                    {item.latestWeight && (
+                      <span className={styles.cowWeight}>Bobot terakhir: {weightFormat.format(item.latestWeight)} kg</span>
+                    )}
+                  </button>
+                ))}
+                {!filteredCattle.length && (
+                  <p className={styles.emptySearch}>
+                    {activeCattle.length ? 'Tidak ada sapi yang cocok dengan pencarian.' : 'Belum ada sapi aktif di peternakan Anda.'}
+                  </p>
+                )}
+              </div>
             </div>
-          </form>
+          )}
+
+          {error && <p className={styles.formError} role="alert">{error}</p>}
+          <div className={styles.selectionFooter}>
+            <button
+              type="button"
+              className={styles.continueButton}
+              disabled={busy || (isNew ? (!newCow.tag || !newCow.breedId || !newCow.gender || !newCow.ageMonths) : !selectedCow)}
+              onClick={() => goToStep(3)}
+            >
+              Lanjut ke Foto <ArrowRight size={16} />
+            </button>
+          </div>
         </section>
       )}
 
+      {/* LANGKAH 3: Unggah Foto dengan Panduan Visual & Alert Positif */}
       {step === 3 && cow && (
-        <section className={styles.selectionSection} aria-busy={busy}>
+        <section className={styles.selectionSection}>
           <div className={styles.stepHeader}>
-            <button type="button" className={styles.backButton} disabled={busy} onClick={() => goToStep(2)}>
-              <ArrowLeft size={16} /> Kembali
+            <button type="button" className={styles.stepBack} disabled={busy} onClick={() => goToStep(2)}>
+              <ArrowLeft size={16} /> Ubah Identitas Sapi
             </button>
             <h2>Foto Pengukuran Sapi</h2>
-            <p>Unggah satu foto sapi dari samping atau belakang. Pastikan seluruh tubuh sapi terlihat.</p>
+            <p>Unggah satu foto sapi tampak samping penuh untuk memulai estimasi bobot.</p>
           </div>
+
           <div className={styles.cowConfirmation}>
             <div>
               <span className={styles.confirmationLabel}>SAPI YANG DIUKUR</span>
@@ -309,75 +357,177 @@ export default function MeasurementPage() {
             </div>
             <span className={styles.confirmationBadge}>{isNew ? 'Sapi Baru' : 'Sapi Lama'}</span>
           </div>
-          <div className={styles.photoGrid}>
-            <div className={styles.formField}>
-              <label htmlFor="photo-view">Sudut foto</label>
-              <select id="photo-view" value={view} disabled={busy} onChange={(event) => {
-                setView(event.target.value)
-                setError('')
-              }}>
-                <option value="samping">Tampak samping</option>
-                <option value="belakang">Tampak belakang</option>
-              </select>
+
+          {/* Panduan Visual / Alert Positif */}
+          <div className={styles.guidanceBox} role="note">
+            <Info size={22} style={{ flexShrink: 0, marginTop: 2 }} />
+            <div>
+              <strong>Panduan Pengambilan Foto Optimal</strong>
+              Foto tampak samping penuh (dari ujung moncong kepala hingga paha belakang) dengan pencahayaan cukup dan latar bersih memberikan akurasi estimasi model AI terbaik.
             </div>
+          </div>
+
+          <div className={styles.photoGrid}>
             <div className={styles.photoCard}>
               {photo ? (
                 <div className={styles.photoPreview}>
-                  <PhotoPreview file={photo} label={photoLabel} />
+                  <PhotoPreview file={photo} label="Foto Samping Sapi" />
                   <button type="button" className={styles.removePhoto} disabled={busy} onClick={() => updatePhoto(null)}>
-                    Hapus foto
+                    Ganti Foto
                   </button>
                 </div>
               ) : (
                 <label className={styles.uploadArea}>
-                  <PlusCircle size={30} />
-                  <strong>Pilih {photoLabel}</strong><span>JPG, PNG, atau WebP</span>
-                  <input type="file" accept="image/jpeg,image/png,image/webp" aria-label={photoLabel} disabled={busy}
-                    onChange={(event) => updatePhoto(event.target.files?.[0] || null)} />
+                  <PlusCircle size={32} />
+                  <strong>Pilih Foto Samping Sapi</strong>
+                  <span>Format: JPG, PNG, atau WebP</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    aria-label="Foto Samping Sapi"
+                    disabled={busy}
+                    onChange={(event) => updatePhoto(event.target.files?.[0] || null)}
+                  />
                 </label>
               )}
             </div>
           </div>
+
           {error && <p className={styles.formError} role="alert">{error}</p>}
+
           <div className={styles.selectionFooter}>
-            <span role="status">
-              {busy
-                ? 'Memverifikasi foto dan menghitung bobot…'
-                : 'Pengukuran disimpan setelah foto terverifikasi sebagai sapi.'}
-            </span>
-            <button type="button" className={styles.continueButton} disabled={busy || !photo}
-              onClick={recordMeasurement}>
-              {busy ? 'Memproses…' : 'Estimasi & Simpan Pengukuran'} <ArrowRight size={16} />
+            <div role="status">
+              {busy ? (
+                <div className={styles.stagedLoading}>
+                  <div className={styles.spinner} />
+                  <span>{loadingStage}</span>
+                </div>
+              ) : (
+                <span>Foto akan dianalisis model AI tanpa mengubah data peternakan.</span>
+              )}
+            </div>
+            <button
+              type="button"
+              className={styles.continueButton}
+              disabled={busy || !photo}
+              onClick={handleEstimateWeight}
+            >
+              {busy ? 'Menganalisis…' : 'Estimasi Bobot Sapi'} <Sparkles size={16} />
             </button>
           </div>
         </section>
       )}
 
-      {step === 4 && result && (
+      {/* LANGKAH 4: Review Estimasi (Two-Step Commit) */}
+      {step === 4 && cow && photo && estimatedWeight !== null && (
         <section className={styles.selectionSection}>
           <div className={styles.stepHeader}>
-            <h2>Pengukuran tersimpan</h2>
-            <p>{isNew ? 'Sapi baru dan pengukuran pertamanya tersimpan di Data Sapi.' : 'Hasil estimasi ditambahkan ke riwayat pengukuran sapi.'}</p>
+            <span className={styles.eyebrow}>TINJAU ESTIMASI BOBOT</span>
+            <h2>Hasil Estimasi Bobot Sapi</h2>
+            <p>Periksa hasil estimasi di bawah ini. Anda dapat mengulangi pengambilan foto atau menyimpan secara permanen ke riwayat peternakan.</p>
           </div>
+
           <div className={styles.resultHero}>
-            <span className={styles.resultEyebrow}>ESTIMASI BOBOT SAPI</span>
-            <div className={styles.resultWeight}>{weightFormat.format(result.bobot_estimasi_kg)} <span>kg</span></div>
+            <span className={styles.resultEyebrow}>ESTIMASI BOBOT AI</span>
+            <div className={styles.resultWeight}>
+              {weightFormat.format(estimatedWeight)} <span>kg</span>
+            </div>
           </div>
+
           <div className={styles.resultInfo}>
-            <div><span>ID Sapi</span><strong>{result.id_sapi}</strong></div>
             <div><span>Ear Tag</span><strong>{cow.tag}</strong></div>
             <div><span>Jenis Sapi</span><strong>{breed}</strong></div>
-            <div><span>Tanggal Pengukuran</span><strong>{new Date(result.tanggal_ukur + 'T00:00:00').toLocaleDateString('id-ID')}</strong></div>
+            <div><span>Jenis Kelamin</span><strong>{cow.gender}</strong></div>
+            <div><span>Umur</span><strong>{cow.ageMonths} Bulan</strong></div>
           </div>
+
           <div className={styles.resultPhotos}>
-            <div><PhotoPreview file={photo} label={photoLabel} /><span>{photoLabel}</span></div>
+            <div>
+              <PhotoPreview file={photo} label="Foto Samping yang Dianalisis" />
+              <span>Foto Tampak Samping (Siap dikompresi ke WebP)</span>
+            </div>
           </div>
+
+          <div className={styles.resultNotice}>
+            <strong>Konfirmasi Penyimpanan</strong>
+            <p>
+              Dengan menekan tombol <em>Simpan Pengukuran</em>, citra akan dikompresi ke format WebP teroptimasi dan dicatat permanen ke database peternakan Anda.
+            </p>
+          </div>
+
+          {error && <p className={styles.formError} role="alert">{error}</p>}
+
+          <div className={styles.selectionFooter}>
+            <button
+              type="button"
+              className={styles.backButton}
+              disabled={busy}
+              onClick={handleRetryEstimate}
+            >
+              <RefreshCw size={16} /> Ulangi Estimasi
+            </button>
+
+            <button
+              type="button"
+              className={styles.continueButton}
+              disabled={busy}
+              onClick={handleSaveMeasurement}
+            >
+              {busy ? (
+                <>
+                  <div className={styles.spinner} /> Menyimpan…
+                </>
+              ) : (
+                <>
+                  <Check size={16} /> Simpan Pengukuran
+                </>
+              )}
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* LANGKAH 5: Konfirmasi Sukses Tersimpan */}
+      {step === 5 && finalResult && (
+        <section className={styles.selectionSection}>
+          <div className={styles.stepHeader}>
+            <div className={styles.successIcon} style={{ width: 44, height: 44, borderRadius: '50%', background: '#d7ebd5', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1f592d', marginBottom: 12 }}>
+              <Check size={26} />
+            </div>
+            <h2>Pengukuran Tersimpan Permanen!</h2>
+            <p>
+              {isNew
+                ? 'Sapi baru dan pengukuran perdananya telah berhasil dicatat.'
+                : 'Hasil pengukuran telah ditambahkan ke riwayat data sapi.'}
+            </p>
+          </div>
+
+          <div className={styles.resultHero}>
+            <span className={styles.resultEyebrow}>BOBOT TERUKUR</span>
+            <div className={styles.resultWeight}>
+              {weightFormat.format(finalResult.bobot)} <span>kg</span>
+            </div>
+          </div>
+
+          <div className={styles.resultInfo}>
+            <div><span>ID Sapi</span><strong>{finalResult.id_sapi}</strong></div>
+            <div><span>Ear Tag</span><strong>{cow.tag}</strong></div>
+            <div><span>Tanggal Ukur</span><strong>{new Date(finalResult.tanggal_ukur + 'T00:00:00').toLocaleDateString('id-ID')}</strong></div>
+            {finalResult.pbh_info && (
+              <div><span>Status PBH</span><strong>{finalResult.pbh_info.pbh_kg_hari} kg/hari ({finalResult.pbh_info.status})</strong></div>
+            )}
+          </div>
+
           <div className={styles.selectionFooter}>
             <button type="button" className={styles.backButton} onClick={restart}>
               <RefreshCw size={16} /> Ukur Sapi Lain
             </button>
-            <button type="button" className={styles.continueButton} onClick={() => navigate('/app/sapi')}>
-              Lihat Data Sapi <ArrowRight size={16} />
+            <button
+              type="button"
+              className={styles.continueButton}
+              onClick={() => navigate(`/app/sapi/${finalResult.id_sapi}`)}
+            >
+              Lihat Detail Sapi <ArrowRight size={16} />
             </button>
           </div>
         </section>

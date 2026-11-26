@@ -32,9 +32,27 @@ export const cattleService = {
     return cattle
   },
 
-  async recordPhotoMeasurement({ cattleId, newCattle, photo, view }) {
+  /**
+   * Tahap 1: Preview estimasi bobot sapi berbasis model AI (tanpa menyimpan ke DB/Storage).
+   * @param {File} photo - Berkas citra sapi
+   */
+  async predictWeight(photo) {
     const form = new FormData()
-    form.append(`foto_${view}`, photo)
+    form.append('foto', photo)
+    const response = await api.post('/pengukuran/predict', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data.data
+  },
+
+  /**
+   * Tahap 2: Simpan permanen pengukuran & kompresi WebP ke Neon Object Storage.
+   * @param {Object} params - { photo, weight, cattleId, newCattle }
+   */
+  async savePhotoMeasurement({ photo, weight, cattleId, newCattle }) {
+    const form = new FormData()
+    form.append('foto', photo)
+    form.append('bobot', weight)
     if (cattleId != null) {
       form.append('id_sapi', cattleId)
     } else {
@@ -44,10 +62,19 @@ export const cattleService = {
       form.append('umur_bulan', newCattle.ageMonths)
     }
 
-    const response = await api.post('/pengukuran/predict', form, {
+    const response = await api.post('/pengukuran/save', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
     return response.data.data
+  },
+
+  /**
+   * Legacy wrapper untuk backward compatibility.
+   */
+  async recordPhotoMeasurement({ cattleId, newCattle, photo }) {
+    const preview = await cattleService.predictWeight(photo)
+    const weight = preview.estimated_weight_kg || preview.bobot
+    return await cattleService.savePhotoMeasurement({ photo, weight, cattleId, newCattle })
   },
 
   /**
@@ -126,6 +153,15 @@ export const cattleService = {
       pbhKgHari: m.pbh_info?.pbh_kg_hari ?? null,
       status: m.pbh_info?.status ?? null,
     }))
+  },
+
+  /**
+   * Mengambil analitik pertumbuhan sapi dan seluruh riwayat penimbangan (PBH & foto WebP).
+   * @param {string|number} id - ID Sapi
+   */
+  async getCattleHistory(id) {
+    const response = await api.get(`/pengukuran/history/${id}`)
+    return response.data
   },
 }
 

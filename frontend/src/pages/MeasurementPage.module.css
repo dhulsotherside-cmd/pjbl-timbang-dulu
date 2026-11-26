@@ -1263,3 +1263,46 @@
 .selectionSection:has(.resultHero) > .selectionFooter {
   margin-top: 18px;
 }
+
+.guidanceBox {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 18px;
+  background: #edf5eb;
+  border: 1px solid #c2dec0;
+  border-radius: 12px;
+  color: #234d31;
+  font-size: 13.5px;
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+.guidanceBox strong {
+  display: block;
+  font-weight: 650;
+  color: #173b23;
+  margin-bottom: 2px;
+}
+
+.stagedLoading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #3b5f45;
+  font-size: 13.5px;
+  font-weight: 500;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #b7d6b3;
+  border-top-color: #2e5939;
+  border-radius: 50%;
+  animation: spin 750ms linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

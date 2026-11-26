@@ -67,6 +67,7 @@ function CattleDetail({ id }) {
 
   const [cow, setCow] = useState(null)
   const [history, setHistory] = useState([])
+  const [summary, setSummary] = useState(null)
   const [jenisSapiList, setJenisSapiList] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
@@ -86,13 +87,30 @@ function CattleDetail({ id }) {
     let active = true
     Promise.all([
       cattleService.getCattleDetail(id),
-      cattleService.getCattleMeasurements(id),
+      cattleService.getCattleHistory(id).catch(() => null),
+      cattleService.getCattleMeasurements(id).catch(() => []),
       cattleService.getJenisSapi().catch(() => []),
-    ]).then(([cattleData, measurementsData, jenisData]) => {
+    ]).then(([cattleData, historyAnalytics, legacyMeasurements, jenisData]) => {
       if (!active) return
       setCow(cattleData)
-      setHistory(measurementsData)
       setJenisSapiList(jenisData)
+
+      if (historyAnalytics && historyAnalytics.history) {
+        setSummary(historyAnalytics.summary)
+        setHistory(
+          historyAnalytics.history.map((m) => ({
+            id: String(m.id_pengukuran),
+            cattleId: String(m.id_sapi),
+            date: m.tanggal_ukur,
+            weight: Number(m.bobot),
+            pbhKgHari: m.pbh_kg_hari ?? null,
+            status: m.status ?? null,
+            fotoUrl: m.foto_url ?? null,
+          }))
+        )
+      } else {
+        setHistory(legacyMeasurements)
+      }
     }).catch((err) => {
       if (active && err.response?.status !== 404) setLoadError('Gagal memuat profil dan riwayat pengukuran.')
     }).finally(() => {
@@ -244,6 +262,44 @@ function CattleDetail({ id }) {
           )}
         </div>
       </header>
+
+      {/* Ringkasan Analitik PBH & Laju Pertumbuhan */}
+      {summary && (
+        <section className={styles.pbhSummaryGrid}>
+          <article className={styles.pbhSummaryCard}>
+            <span>Bobot Awal Masuk</span>
+            <strong>{summary.bobot_awal !== null ? `${summary.bobot_awal} kg` : '—'}</strong>
+            <small>Pengukuran perdana</small>
+          </article>
+          <article className={styles.pbhSummaryCard}>
+            <span>Bobot Terkini</span>
+            <strong>{summary.bobot_terkini !== null ? `${summary.bobot_terkini} kg` : '—'}</strong>
+            <small>Pengukuran terakhir</small>
+          </article>
+          <article className={styles.pbhSummaryCard}>
+            <span>Total Pertambahan</span>
+            <strong style={{ color: summary.total_pertambahan_kg !== null && summary.total_pertambahan_kg < 0 ? '#b91c1c' : '#203c32' }}>
+              {summary.total_pertambahan_kg !== null
+                ? `${summary.total_pertambahan_kg > 0 ? `+${summary.total_pertambahan_kg}` : summary.total_pertambahan_kg} kg`
+                : '—'}
+            </strong>
+            <small>Selisih awal & terkini</small>
+          </article>
+          <article className={styles.pbhSummaryCard}>
+            <span>Rata-Rata PBH</span>
+            <strong style={{ color: summary.rata_rata_pbh !== null && summary.rata_rata_pbh < 0 ? '#b91c1c' : '#203c32' }}>
+              {summary.rata_rata_pbh !== null
+                ? `${summary.rata_rata_pbh > 0 ? `+${summary.rata_rata_pbh}` : summary.rata_rata_pbh} kg/hari`
+                : '—'}
+            </strong>
+            {summary.is_weight_loss ? (
+              <span className={styles.warningBadge}>⚠️ Penurunan Bobot</span>
+            ) : (
+              <small>Laju pertumbuhan harian</small>
+            )}
+          </article>
+        </section>
+      )}
 
       <section className={styles.overviewGrid}>
         <article className={styles.weightHighlight}>
@@ -459,12 +515,26 @@ function CattleDetail({ id }) {
         <div className={styles.historyList}>
           {history.map((item, index) => (
             <article className={styles.historyItem} key={item.id}>
-              <div className={styles.historyIcon}>
-                <Scale size={18} />
-              </div>
+              {item.fotoUrl ? (
+                <img
+                  src={item.fotoUrl}
+                  alt={`Foto Sapi #${item.id}`}
+                  className={styles.historyThumb}
+                  loading="lazy"
+                />
+              ) : (
+                <div className={styles.historyIcon}>
+                  <Scale size={18} />
+                </div>
+              )}
               <div className={styles.historyInfo}>
                 <strong>Pengukuran #{history.length - index}</strong>
-                <span>{formatDate(item.date)}</span>
+                <span>
+                  {formatDate(item.date)}
+                  {item.pbhKgHari !== null && (
+                    <> · PBH: <strong style={{ color: item.pbhKgHari < 0 ? '#b91c1c' : '#203c32' }}>{item.pbhKgHari > 0 ? `+${item.pbhKgHari}` : item.pbhKgHari} kg/hari</strong></>
+                  )}
+                </span>
               </div>
               <strong className={styles.historyWeight}>{item.weight} kg</strong>
             </article>
