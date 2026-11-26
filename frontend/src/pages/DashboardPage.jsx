@@ -1,4 +1,4 @@
-
+import { useEffect, useState } from 'react'
 import {
   ArrowUpRight,
   Beef,
@@ -18,11 +18,7 @@ import {
   Tooltip,
 } from 'recharts'
 
-import {
-  getActiveCattle,
-  getAllMeasurements,
-  getDashboardStats,
-} from '../mocks/cattleData'
+import api from '../services/api'
 
 import styles from './DashboardPage.module.css'
 
@@ -48,81 +44,37 @@ function formatDate(date) {
 }
 
 function DashboardPage() {
-  const activeCattle = getActiveCattle()
-  const measurements = getAllMeasurements()
-  const stats = getDashboardStats()
+  const [summary, setSummary] = useState(null)
+  const [loadError, setLoadError] = useState(false)
 
-  const activeCattleIds = new Set(activeCattle.map((cow) => cow.id))
+  useEffect(() => {
+    const controller = new AbortController()
+    api.get('/dashboard', { signal: controller.signal })
+      .then(({ data }) => setSummary(data))
+      .catch(() => {
+        if (!controller.signal.aborted) setLoadError(true)
+      })
+    return () => controller.abort()
+  }, [])
 
-  // Komposisi gender sapi aktif
-  const maleCount = activeCattle.filter(
-    (cow) => cow.gender === 'Jantan'
-  ).length
+  if (loadError) return <p role="alert">Ringkasan peternakan gagal dimuat. Muat ulang halaman untuk mencoba lagi.</p>
+  if (!summary) return <p role="status">Memuat ringkasan peternakan…</p>
 
-  const femaleCount = activeCattle.filter(
-    (cow) => cow.gender === 'Betina'
-  ).length
-
-  const totalGender = maleCount + femaleCount
-  const malePercentage = totalGender
-    ? (maleCount / totalGender) * 100
-    : 0
-
-  // Tren rata-rata bobot bulanan dari sapi aktif
-  const monthlyData = {}
-
-  measurements
-    .filter((item) => activeCattleIds.has(item.cattleId))
-    .forEach((item) => {
-      const monthKey = item.date.slice(0, 7)
-
-      if (!monthlyData[monthKey]) {
-        monthlyData[monthKey] = {
-          total: 0,
-          count: 0,
-        }
-      }
-
-      monthlyData[monthKey].total += item.weight
-      monthlyData[monthKey].count += 1
-    })
-
-  const weightData = Object.entries(monthlyData)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, data]) => {
-      const monthIndex = Number(month.slice(5, 7)) - 1
-
-      return {
-        month: monthNames[monthIndex],
-        weight: Math.round(data.total / data.count),
-      }
-    })
-
-  const latestWeight = weightData.length
-    ? weightData[weightData.length - 1].weight
-    : 0
-
-  const trendIncreasing = weightData.length > 1 &&
-    weightData[weightData.length - 1].weight >= weightData[0].weight
-
-  // Tiga aktivitas pengukuran terbaru dari sapi aktif
-  const recentActivities = measurements
-    .filter((item) => activeCattleIds.has(item.cattleId))
-    .sort((a, b) => b.date.localeCompare(a.date))
-    .slice(0, 3)
-    .map((item) => {
-      const cow = activeCattle.find(
-        (animal) => animal.id === item.cattleId
-      )
-
-      return {
-        id: item.id,
-        cattleId: item.cattleId,
-        earTag: cow?.tag ?? 'Tidak diketahui',
-        weight: `${item.weight} kg`,
-        date: formatDate(item.date),
-      }
-    })
+  const { jantan: maleCount, betina: femaleCount, sapi_aktif: totalGender } = summary
+  const malePercentage = totalGender ? (maleCount / totalGender) * 100 : 0
+  const weightData = summary.tren_bulanan.map(({ bulan, bobot }) => ({
+    month: monthNames[Number(bulan.slice(5)) - 1] + ' ' + bulan.slice(0, 4),
+    weight: bobot,
+  }))
+  const latestWeight = weightData.at(-1)?.weight ?? '—'
+  const trendIncreasing = weightData.length > 1 && latestWeight >= weightData[0].weight
+  const recentActivities = summary.aktivitas.map((item) => ({
+    id: item.id_pengukuran,
+    cattleId: item.id_sapi,
+    earTag: item.ear_tag,
+    date: formatDate(item.tanggal_ukur),
+    weight: item.bobot + ' kg',
+  }))
 
   return (
     <div className={styles.dashboard}>
@@ -138,7 +90,7 @@ function DashboardPage() {
 
         <div className={styles.dateLabel}>
           <CalendarDays size={16} />
-          <span>November 2026</span>
+          <span>{new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}</span>
         </div>
       </section>
 
@@ -148,7 +100,7 @@ function DashboardPage() {
             <span>Total Sapi Aktif</span>
             <Beef size={21} />
           </div>
-          <div className={styles.statValue}>{stats.activeCattle}</div>
+          <div className={styles.statValue}>{summary.sapi_aktif}</div>
           <div className={styles.statBottom}>
             <span>Terdaftar di peternakan</span>
             <span className={styles.statAccent}>EKOR</span>
@@ -161,7 +113,7 @@ function DashboardPage() {
             <Scale size={21} />
           </div>
           <div className={styles.statValue}>
-            {stats.totalMeasurements}
+            {summary.total_pengukuran}
           </div>
           <div className={styles.statBottom}>
             <span>Seluruh riwayat pengukuran</span>
@@ -174,7 +126,7 @@ function DashboardPage() {
             <Activity size={21} />
           </div>
           <div className={styles.statValue}>
-            {stats.averageWeight} <small>kg</small>
+            {summary.rata_bobot ?? '—'} <small>kg</small>
           </div>
           <div className={styles.statBottom}>
             <span>Dari sapi aktif yang terukur</span>

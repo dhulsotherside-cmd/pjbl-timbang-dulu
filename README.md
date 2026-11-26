@@ -20,7 +20,7 @@
 
 **TimbangDulu** adalah platform fullstack yang dirancang untuk membantu peternak sapi dalam memantau pertumbuhan ternak secara efisien tanpa memerlukan timbangan mekanis/digital konvensional berukuran besar. 
 
-Dengan memanfaatkan citra ternak (tampak samping dan belakang), sistem melakukan estimasi bobot melalui pipeline Computer Vision serta menghitung **Perkembangan Bobot Harian (PBH / *Average Daily Gain*)** secara otomatis untuk mendeteksi anomali nutrisi atau kesehatan lebih dini.
+Dengan satu foto ternak dari samping atau belakang, sistem memverifikasi keberadaan sapi, mengestimasi bobot, dan mencatat **Perkembangan Bobot Harian (PBH)**. Pengaturan model tersedia di [panduan backend](backend/README.md#memilih-model-penimbangan).
 
 ---
 
@@ -32,7 +32,7 @@ Proyek ini dibangun dengan pendekatan decoupled monorepo:
 TimbangDulu/
 ├── frontend/        # Single Page Application (SPA) - React 19, Vite, Recharts, Three.js
 ├── backend/         # REST API Service - FastAPI, SQLAlchemy 2.0, Pydantic, Neon PostgreSQL
-└── ai_engine/       # Modul Computer Vision & Bobot Model AI (YOLO + CNN Regression)
+└── model_prediksi/  # Classifier sapi, model segmentasi dan regresi bobot
 ```
 
 ```mermaid
@@ -46,7 +46,7 @@ graph TD
     end
     
     subgraph Intelligence Layer
-        BE -->|Pipeline Inferensi| AI[CattleVisionService / ONNX Runtime]
+        BE -->|Klasifikasi, segmentasi dan regresi| AI[CattleVisionService]
         BE -->|Analisis ADG| PBH[Kalkulator PBH]
     end
 ```
@@ -58,12 +58,10 @@ graph TD
 
 ### 2. Penyimpanan Berkas Citra (Neon Object Storage)
 > [!TIP]
-> **Arsitektur Terpadu Neon:** TimbangDulu memanfaatkan **Neon Object Storage Buckets** yang didefinisikan langsung pada berkas [neon.ts](file:///C:/Users/THINKPAD/Documents/Banu/IPB/proyek/TimbangDulu/neon.ts) (bucket `cattle-images`).
-> 
-> Keuntungan utama arsitektur ini adalah **Branching terpadu**: saat database Neon di-branch untuk preview atau pengujian, bucket dan berkas citra ikut ter-branch secara instan dengan semantik *copy-on-write*. Backend mengintegrasikan adapter S3-compatible via `app/services/neon_storage.py` (`boto3`) untuk mengunggah berkas gambar foto samping dan belakang sapi berpenamaan acak `uuid4.ext`. Jika kredensial belum diisi, sistem otomatis menggunakan mock storage adapter sehingga aplikasi tetap dapat diuji secara lokal tanpa hambatan.
+> Backend dapat menyimpan foto ke bucket Neon `cattle-images` atau ke direktori `backend/uploads/` jika ketiga pengaturan koneksi S3 dikosongkan. Definisi bucket tersedia di [neon.ts](neon.ts).
 
 ### 3. Pipeline Inferensi Bobot & Analitik PBH
-- **AI Inference Engine:** Dilengkapi kelas `CattleVisionService` dengan switch `USE_MOCK_AI=True`. Menghasilkan estimasi bobot realistis (rentang 60–450 kg) dengan latensi simulasi 0.5–0.8 detik, siap diganti runtime model ONNX saat berkas bobot model diserahkan.
+- **Inferensi bobot** menggunakan classifier terpilih untuk memeriksa satu foto. Model regresi mengestimasi bobot dari foto dan masker segmentasinya.
 - **Kalkulator PBH:** Menghitung laju pertumbuhan:
   $$\text{PBH} = \frac{\Delta\text{Bobot}}{\Delta\text{Hari}} = \frac{\text{Bobot Akhir} - \text{Bobot Awal}}{\text{Jumlah Hari}}$$
   Dilengkapi peringatan dini (`PERINGATAN_PENURUNAN`) jika bobot ternak menyusut.
@@ -77,22 +75,22 @@ graph TD
 | **Backend Auth** | JWT + Bcrypt Hashing | ✅ Selesai | Registrasi, Login, Route Guards, Multi-tenancy |
 | **Backend Sapi** | CRUD Sapi & Jenis Sapi | ✅ Selesai | Transaksi atomik bobot awal manual, Soft-delete archive/unarchive |
 | **Backend PBH** | ADG Engine & Validator | ✅ Selesai | Kalkulator mandiri + kalkulator historis antar pengukuran |
-| **Backend Storage**| Neon Object Storage Adapter | ✅ Selesai | S3-compatible adapter (`boto3`), validasi MIME, UUID sanitizer, lazy init & mock fallback |
-| **Backend Testing**| Pytest Suite (22 Unit Tests) | ✅ Selesai | Verifikasi registrasi, security, isolasi data, dan live Neon scripts |
+| **Backend Storage**| Penyimpanan foto | ✅ Selesai | Bucket Neon atau disk lokal |
+| **Backend Testing**| Pytest | ✅ Selesai | Verifikasi registrasi, inferensi, isolasi data, dan transaksi |
 | **Frontend Auth** | Login & Register Pages | ✅ Selesai | Terhubung ke `/api/v1/auth`, JWT storage di localStorage, auto-redirect |
 | **Frontend Cattle**| Manajemen & Detail Sapi | ✅ Selesai | Terhubung ke `/api/v1/sapi`, modal tambah sapi, tab aktif/arsip, grafik Recharts |
-| **Frontend Ukur** | Halaman Pengukuran Citra | 🟡 Tahap Lanjutan | Antarmuka kamera & upload selesai; sedang proses wiring ke `/api/v1/pengukuran/predict` |
-| **Frontend Dash** | Dashboard Statistik | 🟡 Tahap Lanjutan | Tampilan UI selesai; perlu penyambungan ke endpoint agregasi analitik |
-| **AI Model** | Model Bobot Riil (ONNX) | ⏳ Menunggu Artifak | Mock inference aktif; menunggu ekspor model dari `ai_engine/` |
+| **Frontend Ukur** | Halaman Pengukuran Citra | ✅ Terhubung | Foto dan identitas sapi dikirim ke API penimbangan |
+| **Frontend Dash** | Dashboard Statistik | ✅ Terhubung | Menampilkan riwayat dan ringkasan peternakan pengguna |
+| **AI Model** | Pemeriksaan sapi dan estimasi bobot | ✅ Terhubung | Classifier Keras bawaan, segmentasi dan regresi dari `model_prediksi/` |
 
 ---
 
 ## 💻 Panduan Menjalankan Proyek (Local Setup)
 
 ### 1. Prasyarat
-- **Node.js** v18+ dan **npm**
-- **Python** 3.10+ (disarankan 3.10–3.12)
-- Akun / Database URL **Neon PostgreSQL** (atau PostgreSQL lokal)
+- **Node.js** 20.19.x atau 22.12+ dan **npm**
+- **Python** 3.12 (versi yang diuji)
+- SQLite lokal atau database **PostgreSQL**
 - (Opsional) Kredensial **Neon Object Storage** untuk Bucket `cattle-images` (bisa ditarik via `neon env pull`)
 
 ---
@@ -134,10 +132,10 @@ graph TD
    # Neon PostgreSQL Connection Pooling
    DATABASE_URL="postgresql://<user>:<password>@<ep-pooler-host>.us-east-2.aws.neon.tech/<dbname>?sslmode=require"
 
-   # Neon Object Storage S3-Compatible (Opsional saat mode mock)
-   AWS_ENDPOINT_URL_S3="https://<project-id>.storage.<region>.neon.tech"
-   AWS_ACCESS_KEY_ID="<your-neon-storage-access-key-id>"
-   AWS_SECRET_ACCESS_KEY="<your-neon-storage-secret-access-key>"
+   # Isi ketiganya bila menggunakan Neon Object Storage
+   AWS_ENDPOINT_URL_S3=""
+   AWS_ACCESS_KEY_ID=""
+   AWS_SECRET_ACCESS_KEY=""
    AWS_REGION="us-east-2"
    NEON_STORAGE_BUCKET_NAME="cattle-images"
 
@@ -146,8 +144,7 @@ graph TD
    ALGORITHM="HS256"
    ACCESS_TOKEN_EXPIRE_MINUTES=1440
 
-   # Mock AI Switch
-   USE_MOCK_AI=True
+   CATTLE_CLASSIFIER_PATH=../model_prediksi/sapibukan_cifor.keras
    ```
 
 5. Inisialisasi skema tabel & data master:
@@ -203,10 +200,9 @@ python tests/verify_neon_sapi_crud.py
 
 ## 🗺️ Roadmap & Prioritas Selanjutnya
 
-- [ ] **Wiring Pengukuran Frontend:** Menghubungkan form upload foto di `MeasurementPage.jsx` ke endpoint `POST /api/v1/pengukuran/predict`.
-- [ ] **Endpoint Analitik Dashboard:** Mengimplementasikan endpoint agregasi statistik untuk menggantikan mock data di `DashboardPage.jsx`.
-- [ ] **Integrasi Model AI Riil:** Mengintegrasikan ONNX Runtime atau TorchScript di `CattleVisionService` menggantikan mode mock ketika model bounding box dan estimasi bobot telah diekspor.
-- [x] **Penyimpanan Terpadu Neon:** Migrasi 100% ke Neon Object Storage (S3-compatible) terdefinisi deklaratif di `neon.ts`. Supabase bucket sepenuhnya dihilangkan dari arsitektur.
+- [x] Form pengukuran terhubung ke `POST /api/v1/pengukuran/predict`.
+- [x] Dashboard memuat ringkasan melalui `GET /api/v1/dashboard`.
+- [x] Backend memuat model dari `model_prediksi/`.
 
 ---
 

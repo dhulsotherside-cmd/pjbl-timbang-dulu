@@ -21,6 +21,35 @@ export const cattleService = {
     return response.data.map(transformCattleData)
   },
 
+  async getAllCattle(params = {}) {
+    const cattle = []
+    const limit = 200
+    let page
+    do {
+      page = await cattleService.getCattleList({ ...params, skip: cattle.length, limit })
+      cattle.push(...page)
+    } while (page.length === limit)
+    return cattle
+  },
+
+  async recordPhotoMeasurement({ cattleId, newCattle, photo, view }) {
+    const form = new FormData()
+    form.append(`foto_${view}`, photo)
+    if (cattleId != null) {
+      form.append('id_sapi', cattleId)
+    } else {
+      form.append('ear_tag', newCattle.tag.trim())
+      form.append('id_jenis', newCattle.breedId)
+      form.append('jenis_kelamin', newCattle.gender)
+      form.append('umur_bulan', newCattle.ageMonths)
+    }
+
+    const response = await api.post('/pengukuran/predict', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+    return response.data.data
+  },
+
   /**
    * Mengambil detail sapi berdasarkan ID.
    * @param {string|number} id - ID Sapi
@@ -88,20 +117,15 @@ export const cattleService = {
    * @param {string|number} id - ID Sapi
    */
   async getCattleMeasurements(id) {
-    try {
-      const response = await api.get(`/pengukuran/sapi/${id}`)
-      return response.data.map((m) => ({
-        id: String(m.id_pengukuran),
-        cattleId: String(m.id_sapi),
-        date: m.tanggal_ukur,
-        weight: Number(m.bobot),
-        pbhKgHari: m.pbh_info?.pbh_kg_hari ?? null,
-        status: m.pbh_info?.status ?? null,
-      }))
-    } catch (err) {
-      console.warn('Gagal memuat histori pengukuran:', err)
-      return []
-    }
+    const response = await api.get(`/pengukuran/sapi/${id}`)
+    return response.data.map((m) => ({
+      id: String(m.id_pengukuran),
+      cattleId: String(m.id_sapi),
+      date: m.tanggal_ukur,
+      weight: Number(m.bobot),
+      pbhKgHari: m.pbh_info?.pbh_kg_hari ?? null,
+      status: m.pbh_info?.status ?? null,
+    }))
   },
 }
 

@@ -2,7 +2,7 @@
 
 Backend RESTful API untuk platform **TimbangDulu** — Solusi estimasi bobot sapi berbasis Computer Vision dan pemantauan Perkembangan Bobot Harian (PBH).
 
-Dibangun menggunakan **FastAPI**, **SQLAlchemy 2.0**, **Neon Serverless PostgreSQL (Connection Pooling)**, dan **Neon Object Storage Buckets (S3-Compatible)** dengan arsitektur decoupled dan pluggable Mock AI Inference.
+Dibangun menggunakan **FastAPI**, **SQLAlchemy**, **TensorFlow/Keras**, dan **Neon PostgreSQL**. Untuk pengembangan lokal, backend juga mendukung SQLite dan penyimpanan foto ke disk.
 
 ---
 
@@ -36,7 +36,7 @@ backend/
 │   ├── services/                 # Business Logic & Adapters
 │   │   ├── neon_storage.py       # Upload citra ke Neon Object Storage S3-compatible (UUID unik)
 │   │   ├── pbh_calculator.py     # Kalkulator Perkembangan Bobot Harian (ADG)
-│   │   └── ai_inference.py       # CattleVisionService (Mock / ONNX Model)
+│   │   └── ai_inference.py       # Klasifikasi, segmentasi dan regresi bobot
 │   └── main.py                   # FastAPI Application Entrypoint & CORS Middleware
 ├── tests/                        # Automated Pytest Suite
 │   ├── test_ai_inference.py
@@ -55,36 +55,29 @@ backend/
 ## 🚀 Panduan Memulai Cepat (Quick Start)
 
 ### 1. Prasyarat Lingkungan
-- Python 3.10+ (disarankan 3.10 - 3.12)
-- Database Neon PostgreSQL (atau PostgreSQL lokal)
-- Neon Object Storage (Bucket `cattle-images` via `neon.ts`, opsional saat mode mock)
+- Python 3.12 (versi yang diuji)
+- Database SQLite lokal atau PostgreSQL
+- Berkas model di `model_prediksi/` di sebelah direktori `backend/`
 
 ### 2. Konfigurasi Lingkungan (.env)
-Salin `.env.example` menjadi `.env` dan sesuaikan nilainya:
+Pada instalasi baru, salin `.env.example` menjadi `.env`.
 ```bash
 cp .env.example .env
 ```
 
-Isi konfigurasi pada berkas `.env`:
+Template menggunakan SQLite lokal. Untuk memakai Neon, isi `DATABASE_URL` dengan connection string PostgreSQL. Jika ketiga variabel kredensial S3 dikosongkan, backend menyimpan foto di `backend/uploads/` dan menyajikannya lewat `/uploads/`. Untuk memakai bucket Neon, isi `AWS_ENDPOINT_URL_S3`, `AWS_ACCESS_KEY_ID`, dan `AWS_SECRET_ACCESS_KEY`.
+
+#### Memilih model penimbangan
+
+Ubah pengaturan berikut di `backend/.env`, lalu mulai ulang `python main.py`. Path relatif dihitung dari folder `backend/`. Path absolut juga didukung.
+
 ```env
-# Database Configuration (Neon PostgreSQL - Connection Pooling)
-DATABASE_URL="postgresql://<user>:<password>@<ep-pooler-host>.us-east-2.aws.neon.tech/<dbname>?sslmode=require"
-
-# Neon Object Storage (S3-Compatible Bucket: cattle-images)
-AWS_ENDPOINT_URL_S3="https://<project-id>.storage.<region>.neon.tech"
-AWS_ACCESS_KEY_ID="<your-neon-storage-access-key-id>"
-AWS_SECRET_ACCESS_KEY="<your-neon-storage-secret-access-key>"
-AWS_REGION="us-east-2"
-NEON_STORAGE_BUCKET_NAME="cattle-images"
-
-# JWT
-SECRET_KEY="supersecretjwtkeyforlocaldevelopmentchangesinprod"
-ALGORITHM="HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES=1440
-
-# Mode Mock AI (True: Simulasi 60-450 kg, False: Model Riil)
-USE_MOCK_AI=True
+CATTLE_CLASSIFIER_PATH=../model_prediksi/sapibukan_cifor.keras
+CATTLE_SEGMENTATION_PATH=../model_prediksi/best_seg_model.keras
+CATTLE_REGRESSION_PATH=../model_prediksi/best_reg_model.keras
 ```
+
+Classifier Keras menerima foto dengan probabilitas sapi minimal 0,5 sesuai `cattle_check_meta.json`. Untuk memakai checkpoint PyTorch, jalankan `python -m pip install -r requirements-pytorch.txt`, ganti `CATTLE_CLASSIFIER_PATH` menjadi `../model_prediksi/klasifikasi_sapibukan.pth`, lalu mulai ulang backend. Model ini memilih kelas dengan skor tertinggi sesuai `klasifikasi_sapibukan.ipynb`. Kelas `cow` memiliki indeks 13 pada urutan folder dataset pelatihan. [Daftar kelas pada dataset](https://www.kaggle.com/dsv/9339402)
 
 ### 3. Setup Virtual Environment & Dependensi
 ```bash
@@ -124,7 +117,8 @@ Layanan akan aktif di `http://127.0.0.1:8000`.
 
 Untuk memastikan seluruh logika bisnis, multi-tenancy, dan kalkulator PBH berjalan akurat:
 ```bash
-pytest -v
+python -m pip install pytest httpx
+python -m pytest -v
 ```
 
 ---
@@ -134,14 +128,12 @@ pytest -v
 1. **Multi-Tenancy Isolation:**
    - Semua operasi data `sapi` dan `pengukuran` difilter ketat terhadap `current_user.id_user`.
    - Ear tag unik per peternak (Peternak A dan Peternak B dapat menggunakan ear tag yang sama tanpa bentrok).
-2. **Pipeline Inferensi Citra (`POST /api/v1/pengukuran/predict`):**
-   - Menerima dua berkas citra: `foto_samping` (lateral) dan `foto_belakang` (posterior).
-   - Validasi MIME type dan ekstensi gambar (`.jpg`, `.jpeg`, `.png`, `.webp`).
-   - Eksekusi `CattleVisionService.predict_weight()`:
-     - Jika `USE_MOCK_AI=True`: Latensi 0.5 - 0.8 detik, bobot 60 - 450 kg berdasarkan umur dan jenis kelamin.
-   - Upload kedua gambar dengan nama acak `uuid4().ext` ke Neon Object Storage.
-   - Simpan data pengukuran ke database PostgreSQL.
-   - Secara otomatis menghitung PBH terhadap pengukuran historis sebelumnya.
+2. **Penimbangan melalui `POST /api/v1/pengukuran/predict`**
+   - Kirim satu foto melalui `multipart/form-data`. Gunakan field `foto_samping` atau `foto_belakang` sesuai sudut pengambilan (JPEG, PNG, atau WebP).
+   - Untuk sapi terdaftar, kirim `id_sapi`. Untuk sapi baru, kirim `ear_tag`, `id_jenis`, `jenis_kelamin` dan `umur_bulan`.
+   - Backend memeriksa apakah foto berisi sapi. Jika ditolak, API mengembalikan HTTP 422 dan pengguna dapat mengganti foto.
+   - Sesuai `model_prediksi/cekbobotsapi.ipynb`, model segmentasi menerima RGB berukuran 224 × 224 dalam rentang 0–1. Regresi menggunakan RGB dan masker hasil segmentasi sebagai empat kanal. Pengukuran menyimpan bobot dari satu keluaran regresi dalam kilogram, dibulatkan hingga dua desimal, beserta foto pada kolom sudut yang dipilih.
+   - Respons HTTP 201 memuat ID sapi, ID pengukuran dan bobot yang tersimpan. Untuk sapi baru, profil dan pengukuran pertama tersimpan dalam satu transaksi. Data Sapi, riwayat, dan dashboard membaca database yang sama.
 3. **Kalkulator PBH (Perkembangan Bobot Harian):**
    - Rumus: $\text{PBH} = \frac{\text{Bobot Akhir} - \text{Bobot Awal}}{\Delta \text{Hari}}$.
    - Guardrail: $\Delta \text{Hari} > 0$ (mencegah pembagian dengan nol atau tanggal invalid).

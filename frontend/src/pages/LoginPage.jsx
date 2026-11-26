@@ -23,7 +23,7 @@ export default function LoginPage() {
   const [username, setUsername] = useState(location.state?.registeredUsername || '')
   const [password, setPassword] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
-  const [successNotice, setSuccessNotice] = useState(location.state?.message || '')
+  const successNotice = location.state?.message
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const handleSubmit = async (event) => {

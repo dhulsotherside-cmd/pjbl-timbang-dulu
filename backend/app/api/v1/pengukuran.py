@@ -1,6 +1,8 @@
 from datetime import date
-from typing import List, Optional
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from typing import List, Literal, Optional
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from starlette.datastructures import UploadFile as FormFile
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_db
@@ -15,9 +17,11 @@ from app.schemas.pengukuran import (
     PredictResponse,
     PredictResponseData,
 )
+from app.schemas.sapi import SapiBase
+from app.services.cattle_registration import prepare_sapi
 from app.services.ai_inference import CattleVisionService
 from app.services.pbh_calculator import calculate_pbh
-from app.services.neon_storage import upload_image_to_neon, validate_image_file
+from app.services.neon_storage import delete_uploaded_image, upload_image_to_neon, validate_image_file
 
 router = APIRouter(prefix="/pengukuran", tags=["Pengukuran & Inferensi AI"])
 
@@ -29,99 +33,77 @@ router = APIRouter(prefix="/pengukuran", tags=["Pengukuran & Inferensi AI"])
     summary="Eksekusi Prediksi Bobot & Rekam Pengukuran Baru"
 )
 async def predict_and_record_measurement(
-    id_sapi: int = Form(..., description="ID sapi yang akan diukur"),
-    foto_samping: UploadFile = File(..., description="Citra sisi lateral tubuh ternak"),
-    foto_belakang: UploadFile = File(..., description="Citra sisi posterior (belakang) tubuh ternak"),
+    request: Request,
+    foto_samping: Optional[UploadFile] = File(None),
+    foto_belakang: Optional[UploadFile] = File(None),
+    id_sapi: Optional[int] = Form(None, gt=0),
+    ear_tag: Optional[str] = Form(None, min_length=1, max_length=50),
+    id_jenis: Optional[int] = Form(None, gt=0),
+    jenis_kelamin: Optional[Literal["Jantan", "Betina"]] = Form(None),
+    umur_bulan: Optional[int] = Form(None, ge=1, le=360),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ) -> PredictResponse:
-    """
-    Pipeline lengkap estimasi bobot sapi berbasis Computer Vision:
-    1. Validasi hak akses multi-tenancy: id_sapi harus milik current_user.
-    2. Validasi format berkas kedua citra (MIME type & ekstensi).
-    3. Inferensi bobot melalui CattleVisionService (Mock / ONNX Model).
-    4. Pengunggahan kedua citra ke Neon Object Storage (nama UUID unik).
-    5. Rekam data pengukuran ke database PostgreSQL.
-    6. Komputasi Perkembangan Bobot Harian (PBH) jika ada data historis sebelumnya.
-    """
-    # 1. Validasi kepemilikan sapi (Multi-tenancy isolation)
-    sapi = db.query(Sapi).filter(
-        Sapi.id_sapi == id_sapi,
-        Sapi.id_user == current_user.id_user
-    ).first()
-    if not sapi:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Sapi dengan ID {id_sapi} tidak ditemukan atau bukan milik peternakan Anda."
-        )
+    photo = foto_samping or foto_belakang
+    form = await request.form()
+    if photo is None or sum(isinstance(part, FormFile) for _, part in form.multi_items()) != 1:
+        raise HTTPException(422, "Unggah tepat satu foto sapi dari samping atau belakang.")
+    view = "samping" if foto_samping is not None else "belakang"
+    validate_image_file(photo)
 
-    # 2. Validasi format berkas gambar
-    validate_image_file(foto_samping)
-    validate_image_file(foto_belakang)
+    new_fields = (ear_tag, id_jenis, jenis_kelamin, umur_bulan)
+    if id_sapi is None:
+        if any(value is None for value in new_fields) or not ear_tag.strip():
+            raise HTTPException(422, "Lengkapi ear tag, jenis sapi, jenis kelamin dan umur sapi baru.")
+        sapi = prepare_sapi(db, current_user.id_user, SapiBase(
+            ear_tag=ear_tag, id_jenis=id_jenis, jenis_kelamin=jenis_kelamin, umur_bulan=umur_bulan,
+        ))
+    else:
+        if any(value is not None for value in new_fields):
+            raise HTTPException(422, "Pilih sapi terdaftar atau kirim identitas sapi baru.")
+        sapi = db.query(Sapi).filter_by(id_sapi=id_sapi, id_user=current_user.id_user).first()
+        if sapi is None:
+            raise HTTPException(404, "Sapi tidak ditemukan di peternakan Anda.")
+        if sapi.tanggal_keluar is not None:
+            raise HTTPException(409, "Sapi sudah diarsipkan.")
 
-    # 3. Prediksi bobot melalui AI Inference Service
-    predicted_weight = await CattleVisionService.predict_weight(
-        foto_samping=foto_samping,
-        foto_belakang=foto_belakang,
-        umur_bulan=sapi.umur_bulan,
-        jenis_kelamin=sapi.jenis_kelamin
-    )
-
-    # 4. Upload berkas ke Neon Object Storage (S3-compatible)
-    url_samping = await upload_image_to_neon(foto_samping)
-    url_belakang = await upload_image_to_neon(foto_belakang)
-
-    # 5. Cek pengukuran sebelumnya untuk kalkulasi PBH
+    weight = await CattleVisionService.predict_weight(photo=photo, view=view)
+    photo_url = await upload_image_to_neon(photo)
     today = date.today()
-    latest_prev_pengukuran = (
-        db.query(Pengukuran)
-        .filter(Pengukuran.id_sapi == id_sapi)
-        .order_by(Pengukuran.tanggal_ukur.desc(), Pengukuran.id_pengukuran.desc())
-        .first()
-    )
-
-    pbh_info_obj: Optional[PBHInfo] = None
-    if latest_prev_pengukuran:
-        delta_hari = (today - latest_prev_pengukuran.tanggal_ukur).days
-        if delta_hari > 0:
-            calc = calculate_pbh(
-                bobot_awal=float(latest_prev_pengukuran.bobot),
-                bobot_akhir=predicted_weight,
-                jumlah_hari=delta_hari
+    pbh = None
+    try:
+        if id_sapi is None:
+            db.add(sapi)
+            db.flush()
+        else:
+            previous = (
+                db.query(Pengukuran).filter_by(id_sapi=id_sapi)
+                .order_by(Pengukuran.tanggal_ukur.desc(), Pengukuran.id_pengukuran.desc()).first()
             )
-            pbh_info_obj = PBHInfo(
-                pbh_kg_hari=calc["pbh_kg_hari"],
-                selang_hari=calc["selang_hari"],
-                selisih_bobot_kg=calc["selisih_bobot_kg"],
-                status=calc["status"],
-                pesan=calc["pesan"]
-            )
+            if previous and today > previous.tanggal_ukur:
+                days = (today - previous.tanggal_ukur).days
+                pbh = PBHInfo(**calculate_pbh(float(previous.bobot), weight, days))
 
-    # 6. Simpan baris pengukuran ke database PostgreSQL
-    new_pengukuran = Pengukuran(
-        id_sapi=id_sapi,
-        bobot=predicted_weight,
-        tanggal_ukur=today,
-        path_foto_samping=url_samping,
-        path_foto_belakang=url_belakang
-    )
-    db.add(new_pengukuran)
-    db.commit()
-    db.refresh(new_pengukuran)
-
-    return PredictResponse(
-        status="success",
-        message="Estimasi bobot berhasil diproses",
-        data=PredictResponseData(
-            id_pengukuran=new_pengukuran.id_pengukuran,
-            id_sapi=new_pengukuran.id_sapi,
-            bobot_estimasi_kg=float(new_pengukuran.bobot),
-            tanggal_ukur=new_pengukuran.tanggal_ukur,
-            foto_samping_url=new_pengukuran.path_foto_samping,
-            foto_belakang_url=new_pengukuran.path_foto_belakang,
-            pbh_info=pbh_info_obj
+        measurement = Pengukuran(
+            id_sapi=sapi.id_sapi, bobot=weight, tanggal_ukur=today,
+            path_foto_samping=photo_url if view == "samping" else None,
+            path_foto_belakang=photo_url if view == "belakang" else None,
         )
-    )
+        db.add(measurement)
+        db.flush()
+        result = PredictResponse(data=PredictResponseData(
+            id_pengukuran=measurement.id_pengukuran, id_sapi=sapi.id_sapi,
+            bobot_estimasi_kg=weight, tanggal_ukur=today, pbh_info=pbh,
+            foto_samping_url=measurement.path_foto_samping, foto_belakang_url=measurement.path_foto_belakang,
+        ))
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        await delete_uploaded_image(photo_url)
+        if isinstance(exc, IntegrityError) and id_sapi is None:
+            raise HTTPException(409, "Pendaftaran gagal. Periksa kembali ear tag dan jenis sapi.") from exc
+        raise
+    return result
 
 
 @router.get(

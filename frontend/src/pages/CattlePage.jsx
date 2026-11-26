@@ -27,6 +27,8 @@ function CattlePage() {
   const [allCattle, setAllCattle] = useState([])
   const [jenisSapiList, setJenisSapiList] = useState([])
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
+  const [reloadCount, setReloadCount] = useState(0)
   const [search, setSearch] = useState('')
   const [activeTab, setActiveTab] = useState('active')
   const [breedFilter, setBreedFilter] = useState('Semua')
@@ -45,22 +47,26 @@ function CattlePage() {
     tanggalMasuk: new Date().toISOString().slice(0, 10),
   })
 
-  // Memuat data sapi dan master jenis sapi dari Backend
-  const loadCattle = async () => {
-    try {
-      setIsLoading(true)
-      const data = await cattleService.getCattleList({ status: 'all' })
-      setAllCattle(data)
-    } catch (err) {
-      console.error('Gagal memuat data sapi:', err)
-    } finally {
-      setIsLoading(false)
-    }
+  function reloadCattle() {
+    setIsLoading(true)
+    setReloadCount((previous) => previous + 1)
   }
 
   useEffect(() => {
-    loadCattle()
+    let active = true
+    cattleService.getAllCattle({ status: 'all' }).then((data) => {
+      if (!active) return
+      setAllCattle(data)
+      setLoadError('')
+    }).catch(() => {
+      if (active) setLoadError('Data sapi gagal dimuat. Periksa koneksi lalu coba lagi.')
+    }).finally(() => {
+      if (active) setIsLoading(false)
+    })
+    return () => { active = false }
+  }, [reloadCount])
 
+  useEffect(() => {
     cattleService
       .getJenisSapi()
       .then((data) => setJenisSapiList(data))
@@ -150,7 +156,7 @@ function CattlePage() {
         setSuccessMessage('')
       }, 3500)
 
-      await loadCattle()
+      reloadCattle()
     } catch (err) {
       console.error('Error create cattle:', err)
       if (err.response?.data?.detail) {
@@ -296,6 +302,11 @@ function CattlePage() {
               <Beef size={28} />
               <strong>Memuat data sapi...</strong>
               <span>Menghubungi server peternakan.</span>
+            </div>
+          ) : loadError ? (
+            <div className={styles.emptyState} role="alert">
+              <strong>{loadError}</strong>
+              <button type="button" className={styles.addButton} onClick={reloadCattle}>Coba Lagi</button>
             </div>
           ) : filteredCattle.length > 0 ? (
             filteredCattle.map((cow) => (

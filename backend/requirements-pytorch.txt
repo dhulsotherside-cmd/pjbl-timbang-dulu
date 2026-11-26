@@ -1,0 +1,4 @@
+# Runtime tambahan untuk klasifikasi_sapibukan.pth.
+-r requirements.txt
+torch>=2.6,<3
+torchvision>=0.21,<1

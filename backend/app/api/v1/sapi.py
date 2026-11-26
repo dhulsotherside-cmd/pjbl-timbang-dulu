@@ -11,6 +11,7 @@ from app.models.jenis_sapi import JenisSapi
 from app.models.pengukuran import Pengukuran
 from app.models.sapi import Sapi
 from app.models.user import User
+from app.services.cattle_registration import prepare_sapi, resolve_jenis_id
 from app.schemas.sapi import (
     JenisSapiResponse,
     SapiCreate,
@@ -35,28 +36,6 @@ def list_jenis_sapi(
     Mengambil seluruh daftar ras/jenis sapi (Simental, Limousin, Brahman, PO, Bali, dll).
     """
     return db.query(JenisSapi).order_by(JenisSapi.nama_jenis.asc()).all()
-
-
-def _resolve_jenis_id(db: Session, id_jenis: Optional[int], breed: Optional[str]) -> Optional[int]:
-    """
-    Utilitas untuk memvalidasi dan me-resolve ID jenis sapi baik dari ID maupun nama breed.
-    """
-    if id_jenis is not None:
-        exists = db.query(JenisSapi).filter(JenisSapi.id_jenis == id_jenis).first()
-        if not exists:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Jenis sapi dengan ID {id_jenis} tidak ditemukan."
-            )
-        return id_jenis
-
-    if breed and breed.strip():
-        cleaned_breed = breed.strip()
-        match = db.query(JenisSapi).filter(JenisSapi.nama_jenis.ilike(f"%{cleaned_breed}%")).first()
-        if match:
-            return match.id_jenis
-
-    return None
 
 
 def _enrich_sapi_with_measurement(db: Session, sapi: Sapi) -> SapiResponse:
@@ -110,33 +89,8 @@ def create_sapi(
     - Resolusi `id_jenis` dari ID atau nama string `breed`.
     - Perekaman data sapi dan bobot awal manual ke tabel `pengukuran` dalam satu transaksi atomik.
     """
-    cleaned_tag = sapi_in.ear_tag.strip()
-
-    # 1. Validasi keunikan ear_tag per user
-    existing_ear_tag = db.query(Sapi).filter(
-        Sapi.id_user == current_user.id_user,
-        func.lower(Sapi.ear_tag) == cleaned_tag.lower()
-    ).first()
-    if existing_ear_tag:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Ear tag '{cleaned_tag}' sudah terdaftar pada peternakan Anda."
-        )
-
-    # 2. Resolusi ID jenis sapi
-    resolved_id_jenis = _resolve_jenis_id(db, sapi_in.id_jenis, sapi_in.breed)
-
-    # 3. Transaksi atomik penambahan sapi dan pengukuran awal
+    db_sapi = prepare_sapi(db, current_user.id_user, sapi_in)
     try:
-        db_sapi = Sapi(
-            id_user=current_user.id_user,
-            id_jenis=resolved_id_jenis,
-            ear_tag=cleaned_tag,
-            jenis_kelamin=sapi_in.jenis_kelamin,
-            umur_bulan=sapi_in.umur_bulan,
-            tanggal_masuk=sapi_in.tanggal_masuk,
-            tanggal_keluar=sapi_in.tanggal_keluar,
-        )
         db.add(db_sapi)
         db.flush()  # Dapatkan id_sapi dari sequence DB
 
@@ -155,7 +109,7 @@ def create_sapi(
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Ear tag '{cleaned_tag}' sudah digunakan pada peternakan Anda."
+            detail=f"Ear tag '{sapi_in.ear_tag}' sudah digunakan pada peternakan Anda."
         )
     except SQLAlchemyError as exc:
         db.rollback()
@@ -198,7 +152,7 @@ def list_sapi(
     if search and search.strip():
         query = query.filter(Sapi.ear_tag.ilike(f"%{search.strip()}%"))
 
-    sapi_list = query.order_by(Sapi.created_at.desc()).offset(skip).limit(limit).all()
+    sapi_list = query.order_by(Sapi.created_at.desc(), Sapi.id_sapi.desc()).offset(skip).limit(limit).all()
 
     return [_enrich_sapi_with_measurement(db, s) for s in sapi_list]
 
@@ -276,7 +230,7 @@ def update_sapi(
 
     # Resolusi ID jenis jika ada perubahan jenis / breed
     if sapi_in.id_jenis is not None or sapi_in.breed is not None:
-        resolved_jenis = _resolve_jenis_id(db, sapi_in.id_jenis, sapi_in.breed)
+        resolved_jenis = resolve_jenis_id(db, sapi_in.id_jenis, sapi_in.breed)
         if resolved_jenis is not None:
             sapi.id_jenis = resolved_jenis
 

@@ -2,7 +2,6 @@ import { useEffect } from 'react'
 import FarmScene from '../components/landing/FarmScene'
 import styles from './LandingPage.module.css'
 import sapiSamping from '../assets/images/sapi-samping.png'
-import sapiBelakang from '../assets/images/sapi-belakang.png'
 import logo from '../assets/images/logo-timbangdulu.png'
 
 export default function LandingPage() {
@@ -124,8 +123,7 @@ export default function LandingPage() {
     dari foto sapi.
   </h3>
   <p>
-    Unggah dua foto sapi untuk mendapatkan estimasi
-    bobot dengan lebih praktis.
+    Unggah satu foto tampak samping atau belakang untuk mendapatkan estimasi bobot sapi.
   </p>
 </div>
             
@@ -139,21 +137,16 @@ export default function LandingPage() {
     </div>
 
     <div className={styles.previewPhotos}>
-  <div className={styles.previewPhoto}>
-    <img src={sapiSamping} alt="Tampak samping sapi" />
-    <span>FOTO SAMPING</span>
-  </div>
-
-  <div className={styles.previewPhoto}>
-    <img src={sapiBelakang} alt="Tampak belakang sapi" />
-    <span>FOTO BELAKANG</span>
-  </div>
-</div>
+      <div className={styles.previewPhoto}>
+        <img src={sapiSamping} alt="Tampak samping sapi" />
+        <span>FOTO SAMPING</span>
+      </div>
+    </div>
 
     <div className={styles.previewResult}>
       <div>
         <span className={styles.resultLabel}>ESTIMASI BOBOT</span>
-        <strong>485 <small>kg</small></strong>
+        <strong>178,08 <small>kg</small></strong>
       </div>
       <span className={styles.resultIcon}>↗</span>
     </div>
