@@ -143,44 +143,60 @@ backend/
 
 ### 3.3. Modul Pengukuran & AI Inferensi (`/api/v1/pengukuran`)
 
-#### A. Eksekusi Prediksi & Simpan Pengukuran
+#### A. Tahap 1: Preview Estimasi Bobot (Inference Only)
 * **Endpoint:** `POST /api/v1/pengukuran/predict`
 * **Content-Type:** `multipart/form-data`
 * **Form Data:**
-  * Opsi Sapi Terdaftar:
-    * `id_sapi` (int, opsional): ID sapi yang diukur.
-  * Opsi Onboarding Sapi Baru (One-Step):
-    * `ear_tag` (str, opsional): Tag telinga sapi baru.
-    * `id_jenis` (int, opsional): ID jenis/ras sapi.
-    * `jenis_kelamin` (str, opsional): "Jantan" atau "Betina".
-    * `umur_bulan` (int, opsional): Umur sapi dalam bulan.
-  * Berkas Citra (Tepat 1 foto):
-    * `foto_samping` (UploadFile, opsional): Citra lateral sapi.
-    * `foto_belakang` (UploadFile, opsional): Citra posterior sapi.
+  * Berkas Citra (Tepat 1 foto tampak samping penuh):
+    * `foto` (UploadFile, wajib — alias `foto_samping` tetap didukung demi kompatibilitas).
+* **Karakteristik & Alur Eksekusi:**
+  1. Validasi berkas citra mentah (*raw bytes*, format JPG, PNG, atau WebP).
+  2. Masukkan citra mentah langsung ke pipeline 3 model Keras AI (JANGAN dikompresi sebelum inferensi agar akurasi fitur visual tidak terdegradasi).
+  3. Tahapan Model:
+     - Klasifikasi: Verifikasi objek adalah sapi (ambang $\ge 0.5$, HTTP 422 jika non-sapi).
+     - Segmentasi: Menghasilkan masker siluet tubuh sapi.
+     - Regresi: Menghitung estimasi bobot ($\text{kg}$) berbasis citra + masker.
+  4. **Strict Isolation:** Endpoint ini **TIDAK** menulis ke PostgreSQL dan **TIDAK** mengunggah berkas ke Neon Object Storage.
+* **Response (200 OK):**
+  ```json
+  {
+    "status": "success",
+    "message": "Estimasi bobot berhasil dihitung",
+    "estimated_weight_kg": 284.50,
+    "confidence": 0.94,
+    "model_version": "v3-keras-three-stage"
+  }
+  ```
+
+#### B. Tahap 2: Simpan Pengukuran Permanen (Two-Step Commit)
+* **Endpoint:** `POST /api/v1/pengukuran/save`
+* **Content-Type:** `multipart/form-data`
+* **Form Data:**
+  * `foto` (UploadFile, wajib): Citra sapi yang diestimasi.
+  * `bobot` (float, wajib): Nilai estimasi bobot hasil dari Tahap 1.
+  * Target Sapi (pilih salah satu alur):
+    * Opsi Sapi Terdaftar: `id_sapi` (int, opsional).
+    * Opsi Onboarding Sapi Baru (One-Step): `ear_tag` (str), `id_jenis` (int), `jenis_kelamin` (str: "Jantan"/"Betina"), `umur_bulan` (int).
 * **Alur Eksekusi Service:**
-  1. Validasi masukan: Pastikan tepat 1 foto diunggah (`foto_samping` ATAU `foto_belakang`).
-  2. Validasi kepemilikan sapi (`id_sapi`) atau verifikasi identitas sapi baru (`ear_tag` belum terdaftar pada user).
-  3. Validasi format berkas citra (JPG, PNG, WebP).
-  4. Eksekusi `CattleVisionService.predict_weight(...)`:
-     - Klasifikasi: Verifikasi objek foto adalah sapi (ambang $\ge 0.5$, HTTP 422 jika non-sapi).
-     - Segmentasi: Menghasilkan masker biner siluet sapi.
-     - Regresi: Menghasilkan estimasi bobot ($\text{kg}$) berbasis 4-kanal (RGB + Masker).
-  5. Unggah citra ke Full Neon Object Storage (`cattle-images`) dengan struktur path `sapi/<id_sapi>/<sudut>_<uuid>.<ext>` atau `sapi/onboarding/<sudut>_<uuid>.<ext>`.
-  6. Simpan baris baru ke tabel `pengukuran` (dan tabel `sapi` jika onboarding sapi baru) secara atomik.
-  7. Hitung kalkulasi PBH terhadap pengukuran historis sebelumnya.
-  8. Rollback compensation: Jika database gagal commit, berkas di Neon Object Storage otomatis dibersihkan via `delete_object`.
+  1. Kompresi gambar: Konversi citra ke `.webp` via `compress_to_webp(quality=80, max_size=1280)` dengan normalisasi orientasi `ImageOps.exif_transpose` dan RGB conversion.
+  2. Unggah berkas `.webp` ke Neon Object Storage (`cattle-images`) dengan `ContentType="image/webp"`.
+  3. Struktur path objek: `sapi/{id_sapi}/{uuid}.webp`.
+  4. Transaksi Atomik Database:
+     - Jika onboarding: daftarkan sapi baru terlebih dahulu.
+     - Simpan baris baru ke tabel `pengukuran`. Simpan **relative object key** ke kolom `path_foto_samping` (biarkan `path_foto_belakang` bernilai `NULL`).
+  5. Rollback Compensation: Jika transaksi database gagal, otomatis jalankan `delete_uploaded_image(object_key)` ke Neon Object Storage untuk mencegah orphan files.
+  6. Kembalikan response dengan URL presigned untuk tampilan instan di antarmuka pengguna.
 * **Response (201 Created):**
   ```json
   {
     "status": "success",
-    "message": "Estimasi bobot berhasil diproses",
+    "message": "Pengukuran berhasil disimpan",
     "data": {
       "id_pengukuran": 105,
       "id_sapi": 12,
-      "bobot_estimasi_kg": 284.50,
+      "bobot": 284.50,
       "tanggal_ukur": "2026-11-26",
-      "foto_samping_url": "https://xyz.storage.us-east-2.neon.tech/cattle-images/sapi/12/samping_8b3f.jpg",
-      "foto_belakang_url": null,
+      "foto_url": "https://xyz.storage.us-east-2.neon.tech/cattle-images/sapi/12/3fa85f64-5717-4562-b3fc-2c963f66afa6.webp?X-Amz-Signature=...",
       "pbh_info": {
         "pbh_kg_hari": 0.85,
         "selang_hari": 14,
@@ -190,11 +206,62 @@ backend/
   }
   ```
 
-#### B. Riwayat Pengukuran Sapi Tertentu
+#### C. Analitik Pertumbuhan PBH & Histori Foto Dinamis
+* **Endpoint:** `GET /api/v1/pengukuran/history/{id_sapi}`
+* **Header:** `Authorization: Bearer <token>`
+* **Karakteristik & Perhitungan:**
+  1. Validasi multi-tenancy: pastikan sapi dengan `id_sapi` terdaftar milik `current_user`.
+  2. Ambil seluruh data pengukuran terurut kronologis (`tanggal_ukur` ascending).
+  3. Perhitungan Metrik Agregat:
+     - `bobot_awal`: Bobot pertama kali sapi ditimbang.
+     - `bobot_terkini`: Bobot pengukuran paling akhir.
+     - `total_pertambahan_kg`: `bobot_terkini - bobot_awal`.
+     - `rata_rata_pbh`: Rata-rata penambahan bobot harian (kg/hari).
+     - `is_weight_loss`: `True` jika tren PBH terakhir atau rata-rata bernilai negatif.
+  4. Guardrails Pembagian Nol:
+     - Jika hanya ada 1 data penimbangan atau selisih hari pengukuran bernilai 0 (`selisih_hari == 0`), nilai interval PBH dan `rata_rata_pbh` bernilai `null` (bukan error).
+  5. Konversi URL Dinamis:
+     - Setiap object key `.webp` yang tersimpan pada `path_foto_samping` dikonversi menjadi URL presigned/akses valid pada field `foto_url`.
+* **Response (200 OK):**
+  ```json
+  {
+    "id_sapi": 12,
+    "ear_tag": "ST-001",
+    "ringkasan": {
+      "bobot_awal": 250.0,
+      "bobot_terkini": 284.5,
+      "total_pertambahan_kg": 34.5,
+      "rata_rata_pbh": 0.86,
+      "is_weight_loss": false
+    },
+    "riwayat": [
+      {
+        "id_pengukuran": 101,
+        "tanggal_ukur": "2026-10-15",
+        "bobot_kg": 250.0,
+        "pbh_kg_hari": null,
+        "selang_hari": null,
+        "status_pbh": null,
+        "foto_url": "https://xyz.storage.us-east-2.neon.tech/cattle-images/sapi/12/init.webp?..."
+      },
+      {
+        "id_pengukuran": 105,
+        "tanggal_ukur": "2026-11-26",
+        "bobot_kg": 284.5,
+        "pbh_kg_hari": 0.82,
+        "selang_hari": 42,
+        "status_pbh": "NORMAL",
+        "foto_url": "https://xyz.storage.us-east-2.neon.tech/cattle-images/sapi/12/3fa85f64.webp?..."
+      }
+    ]
+  }
+  ```
+
+#### D. Riwayat Pengukuran Sapi Sederhana
 * **Endpoint:** `GET /api/v1/pengukuran/sapi/{id_sapi}`
 * **Response (200 OK):** List riwayat pengukuran terurut secara descending berdasarkan `tanggal_ukur`.
 
-#### C. Kalkulator PBH Kustom
+#### E. Kalkulator PBH Kustom
 * **Endpoint:** `POST /api/v1/pengukuran/kalkulator-pbh`
 * **Request Body (JSON):**
   ```json
@@ -258,47 +325,37 @@ def calculate_pbh(bobot_awal: float, bobot_akhir: float, jumlah_hari: int) -> Di
     }
 ```
 
-### 4.2. Neon Object Storage Service (`app/services/neon_storage.py`)
+### 4.2. Utilitas Kompresi WebP & Neon Object Storage (`app/services/image_utils.py` & `app/services/neon_storage.py`)
 ```python
+import io
 import uuid
-import os
 import boto3
+from PIL import Image, ImageOps
 from botocore.config import Config
-from fastapi import UploadFile, HTTPException
+from app.core.config import settings
 
-ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL_S3")
-ACCESS_KEY = os.getenv("AWS_ACCESS_KEY_ID")
-SECRET_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
-STORAGE_BUCKET = os.getenv("NEON_STORAGE_BUCKET_NAME", "cattle-images")
+def compress_to_webp(image_bytes: bytes, max_size: int = 1280, quality: int = 80) -> bytes:
+    """Mengubah format citra ke WEBP terkompresi dengan EXIF transpose dan resizing proporsional."""
+    img = Image.open(io.BytesIO(image_bytes))
+    img = ImageOps.exif_transpose(img)
+    img = img.convert("RGB")
+    
+    if max(img.size) > max_size:
+        img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+        
+    out = io.BytesIO()
+    img.save(out, format="WEBP", quality=quality, optimize=True)
+    return out.getvalue()
 
-s3_config = Config(s3={"addressing_style": "path"})
-s3_client = boto3.client(
-    "s3",
-    endpoint_url=ENDPOINT_URL,
-    aws_access_key_id=ACCESS_KEY,
-    aws_secret_access_key=SECRET_KEY,
-    config=s3_config
-)
-
-async def upload_image_to_neon(file: UploadFile) -> str:
-    content_type = file.content_type
-    if not content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Berkas harus berupa gambar valid")
-
-    file_bytes = await file.read()
-    file_ext = file.filename.split(".")[-1]
-    unique_filename = f"{uuid.uuid4()}.{file_ext}"
-
-    try:
-        s3_client.put_object(
-            Bucket=STORAGE_BUCKET,
-            Key=unique_filename,
-            Body=file_bytes,
-            ContentType=content_type
-        )
-        return f"{ENDPOINT_URL.rstrip('/')}/{STORAGE_BUCKET}/{unique_filename}"
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Gagal mengunggah citra ke Neon Object Storage: {str(e)}")
+def upload_bytes_to_neon(image_bytes: bytes, object_key: str, content_type: str = "image/webp") -> str:
+    """Mengunggah raw bytes terkompresi ke Neon Object Storage secara fail-fast."""
+    s3_client.put_object(
+        Bucket=settings.NEON_STORAGE_BUCKET_NAME,
+        Key=object_key,
+        Body=image_bytes,
+        ContentType=content_type,
+    )
+    return object_key
 ```
 
 ### 4.3. AI Inference Abstraction & Mock Service (`app/services/ai_inference.py`)

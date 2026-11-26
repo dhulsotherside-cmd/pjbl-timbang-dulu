@@ -5,27 +5,27 @@ Format pencatatan berpedoman pada [Keep a Changelog](https://keepachangelog.com/
 
 ---
 
-## [0.6.0] - 2026-11-26 — Full Neon Object Storage (Strict/Fail-Fast) & Pipeline Stabilization
+## [0.6.0] - 2026-11-27 — Two-Step Commit Flow, WebP Compression & Growth Analytics
 
-Transisi arsitektur penyimpanan citra dari mode Hibrida (S3 + fallback disk lokal) menjadi **Full Neon Object Storage (Strict/Fail-Fast)** pada bucket `cattle-images`, pembersihan jalur lokal, dan stabilisasi pipeline computer vision.
+Implementasi penuh alur penimbangan dua tahap (*Two-Step Commit*), kompresi otomatis citra smartphone ke format WebP teroptimasi, penyimpanan *relative object key* ke Neon Object Storage, endpoint analitik histori pertumbuhan & laju PBH, serta pembaruan antarmuka terpadu pada frontend React.
 
-### Changed
-- **Full Neon Object Storage Adapter (`app/services/neon_storage.py`):**
-  - **Eliminasi Fallback Lokal:** Menghapus seluruh mekanisme penyimpanan ke disk lokal (`backend/uploads/`) dan StaticFiles mount.
-  - **Fail-Fast Validation:** Validasi langsung melempar `RuntimeError` jika salah satu dari `AWS_ENDPOINT_URL_S3`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, atau `NEON_STORAGE_BUCKET_NAME` belum diisi.
-  - **Konfigurasi Boto3 S3-Compatible:** Menegakkan `signature_version="s3v4"`, `s3={"addressing_style": "path"}`, dan retry policy standar.
-  - **Struktur Path Berkas Rapi:** Penyimpanan citra terstruktur per sapi (`sapi/<id_sapi>/<sudut>_<uuid>.<ext>`) dan onboarding sapi baru (`sapi/onboarding/<sudut>_<uuid>.<ext>`).
-  - **Mekanisme Akses Citra & Rollback:** Mendukung `get_public_url` (bucket berakses public_read), `generate_presigned_url` (URL bertanda tangan aman), serta fungsi rollback kompensasi `delete_uploaded_image` yang memanggil `delete_object` langsung ke Neon Object Storage.
-- **Pembersihan Jalur Lokal (`app/main.py` & `.gitignore`):**
-  - Menghapus mounting `app.mount("/uploads", StaticFiles(...))` dan pembuatan folder lokal pada startup lifespan.
-  - Memastikan `backend/uploads/` dan `uploads/` terdaftar pada `.gitignore`.
-- **API Pengukuran Integration (`app/api/v1/pengukuran.py`):**
-  - Parameter `upload_image_to_neon` diperbarui dengan menyertakan `id_sapi` dan `view` (sudut foto) untuk menghasilkan struktur direktori S3 yang rapi.
-- **Konfigurasi Lingkungan (`.env.example`):**
-  - Menegaskan status wajib kredensial Neon Object Storage untuk seluruh deployment backend.
-- **Live Smoke Test Suite & Unit Test (`tests/verify_neon_storage.py`, `tests/test_photo_storage.py`):**
-  - Penambahan skrip live smoke test `tests/verify_neon_storage.py` yang memvalidasi 4 pilar: `put_object`, `head_object`, akses presigned & public URL (HTTP 200), dan `delete_object` cleanup.
-  - Pembaruan unit test storage dengan mocking S3 client penuh sehingga seluruh 34 test pytest lulus tanpa dependensi storage lokal.
+### Added
+- **Image Compression Utility (`app/services/image_utils.py`):**
+  - Implementasi fungsi `compress_to_webp(image_bytes, max_size=1280, quality=80)` menggunakan Pillow.
+  - Normalisasi orientasi EXIF (`ImageOps.exif_transpose`) dan konversi RGB sebelum resize proporsional dan kompresi WebP.
+- **Two-Step Commit API (`app/api/v1/pengukuran.py`):**
+  - `POST /api/v1/pengukuran/predict` (Tahap 1 — Preview): Menjalankan model AI dengan citra mentah (raw bytes) tanpa persistensi database atau upload cloud, mengembalikan estimasi bobot instan.
+  - `POST /api/v1/pengukuran/save` (Tahap 2 — Commit Permanen): Mengompresi citra ke format WebP, mengunggah ke Neon Object Storage (`cattle-images`), dan menyimpan transaksi atomik ke PostgreSQL dengan relative object key.
+- **Growth Analytics & History Endpoint (`GET /api/v1/pengukuran/history/{id_sapi}`):**
+  - Mengembalikan metrik ringkasan pertumbuhan: `bobot_awal`, `bobot_terkini`, `total_pertambahan_kg`, `rata_rata_pbh`, `is_weight_loss`, dan histori penimbangan kronologis.
+  - Mengonversi relative object key secara dinamis menjadi Presigned URL foto aktif.
+  - Guardrail proteksi pembagian dengan nol pada pengukuran di hari yang sama (`selisih_hari == 0`) atau data tunggal.
+- **Frontend Integration (`MeasurementPage.jsx`, `CattleDetailPage.jsx`, `cattleService.js`):**
+  - `MeasurementPage.jsx`: Alur terkunci 1 foto tampak samping (menghapus dropdown sudut), panduan visual pengambilan foto optimal, indikator loading bertahap (Verifikasi citra $\rightarrow$ Segmentasi $\rightarrow$ Estimasi bobot), serta kartu tinjau dua tombol (*Ulangi Estimasi* vs *Simpan Pengukuran*).
+  - `CattleDetailPage.jsx`: Menampilkan kartu ringkasan pertumbuhan, warning badge jika terjadi penurunan bobot, grafik pertumbuhan Recharts, dan thumbnail foto WebP pada riwayat pengukuran.
+- **Comprehensive Automated Test Suite:**
+  - Penambahan `tests/test_analytics_and_image_utils.py` (uji kompresi WebP, guardrails analitik, deteksi penurunan bobot).
+  - Total test suite pytest mencapai 37 passed, 2 skipped, 0 failed.
 
 ---
 

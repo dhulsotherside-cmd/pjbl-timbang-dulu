@@ -57,8 +57,10 @@ Semua endpoint versi 1 diakses melalui prefix `/api/v1`. OpenAPI Swagger UI akti
 ### 2.4. Modul Pengukuran & Kalkulator PBH (`/api/v1/pengukuran`)
 | Method | Path | Auth | Form-Data / JSON | Response Success | Catatan |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `POST` | `/api/v1/pengukuran/predict` | Bearer Token | `multipart/form-data`:<br>- `id_sapi` (int)<br>- `foto_samping` (UploadFile)<br>- `foto_belakang` (UploadFile) | `201 Created` (`PredictResponse`: `bobot_estimasi_kg`, `foto_samping_url`, `foto_belakang_url`, `pbh_info`) | Alur inferensi, upload storage, rekam ke DB & hitung PBH historis |
-| `GET` | `/api/v1/pengukuran/sapi/{id_sapi}` | Bearer Token | Path: `id_sapi` | `200 OK` (`List[PengukuranResponse]`) | Riwayat terurut descending dilengkapi kalkulasi PBH antar-titik ukur |
+| `POST` | `/api/v1/pengukuran/predict` | Bearer Token | `multipart/form-data`:<br>- `foto` (UploadFile) | `200 OK` (`PredictPreviewResponse`: `estimated_weight_kg`, `bobot`, `confidence`, `status`) | Tahap 1 Two-Step Commit: inferensi AI citra asli tanpa penulisan ke DB/Storage |
+| `POST` | `/api/v1/pengukuran/save` | Bearer Token | `multipart/form-data`:<br>- `foto` (UploadFile)<br>- `bobot` (float)<br>- `id_sapi` (opsional) atau data sapi baru | `201 Created` (`MeasurementSaveResponse`: `id_pengukuran`, `bobot`, `path_foto_samping`, `foto_url`, `pbh_info`) | Tahap 2 Two-Step Commit: kompresi WebP, upload Neon Storage, rekam atomik ke DB |
+| `GET` | `/api/v1/pengukuran/history/{id_sapi}` | Bearer Token | Path: `id_sapi` | `200 OK` (`CattleHistoryResponse`: `summary`, `history`) | Ringkasan analitik pertumbuhan (bobot awal, terkini, delta, rata-rata PBH, warning loss) & time-series presigned foto WebP |
+| `GET` | `/api/v1/pengukuran/sapi/{id_sapi}` | Bearer Token | Path: `id_sapi` | `200 OK` (`List[PengukuranResponse]`) | Riwayat terurut descending dilengkapi kalkulasi PBH antar-titik ukur (legacy) |
 | `POST` | `/api/v1/pengukuran/kalkulator-pbh` | Public | JSON `KalkulatorPBHRequest`: `bobot_awal`, `bobot_akhir`, `jumlah_hari` | `200 OK` (`KalkulatorPBHResponse`: `pbh_kg_hari`, `status`, `pesan`) | Utilitas mandiri tanpa mutasi database |
 
 ---
@@ -88,8 +90,9 @@ Dikelola melalui berkas `.env` dan diakses melalui `app/core/config.py` (Pydanti
 
 ## 4. Status Pengujian Otomatis (Automated Test Suite)
 
-- **Total Test Cases:** 34 passed, 2 skipped, 0 failed.
+- **Total Test Cases:** 37 passed, 2 skipped, 0 failed.
 - **Lokasi Berkas Uji:** `tests/`
+  - `tests/test_analytics_and_image_utils.py`: Pengujian utilitas kompresi WebP (resize proporsional, EXIF transpose, format WebP) dan endpoint analitik PBH (guardrail 1 data, same day division-by-zero prevention, deteksi penurunan bobot, presigned URL).
   - `tests/test_photo_storage.py`: Pengujian Full Neon Object Storage (mock S3 upload path-style `sapi/<id_sapi>/`, fail-fast `RuntimeError` saat kredensial kosong, presigned URL generator, validasi MIME, dan rollback cleanup via `delete_object`).
   - `tests/verify_neon_storage.py`: Skrip verifikasi live smoke test ke Neon Object Storage aktif (`put_object`, `head_object`, presigned & public GET URL, dan `delete_object` cleanup — sukses 100%).
   - `tests/test_sapi_crud.py`: Pengujian transaksi atomik simpan sapi + bobot awal, constraint unik ear tag per user, isolasi multi-tenancy beda peternak, update profil, pengarsipan (*status transition* active/archived), dan unarchive.
@@ -98,7 +101,7 @@ Dikelola melalui berkas `.env` dan diakses melalui `app/core/config.py` (Pydanti
   - `tests/test_security.py`: Pengujian hashing password bcrypt dan siklus JWT sign-decode.
   - `tests/test_ai_inference.py`: Pengujian alur 1-foto inferensi (klasifikasi, segmentasi, regresi) dan penolakan foto bukan sapi (HTTP 422).
   - `tests/test_dashboard.py`: Pengujian agregasi data dashboard per peternak.
-  - `tests/test_api_integration.py`: Alur menyeluruh registrasi $\rightarrow$ login $\rightarrow$ isolasi multi-tenant $\rightarrow$ penambahan sapi dengan bobot awal $\rightarrow$ prediksi 1 foto $\rightarrow$ inspeksi riwayat & PBH.
+  - `tests/test_api_integration.py`: Alur menyeluruh registrasi $\rightarrow$ login $\rightarrow$ isolasi multi-tenant $\rightarrow$ penambahan sapi dengan bobot awal $\rightarrow$ Two-Step Commit (predict & save) $\rightarrow$ inspeksi riwayat & PBH.
   - `tests/verify_neon_sapi_crud.py`: Skrip verifikasi live end-to-end CRUD data sapi langsung ke database Neon PostgreSQL aktif.
   - `tests/verify_neon_registration.py`: Skrip verifikasi live end-to-end registrasi langsung ke database Neon PostgreSQL aktif.
 
@@ -122,9 +125,13 @@ Berikut adalah daftar periksa terstruktur untuk sesi prompt dan sprint pengemban
 - [x] **Cattle CRUD Management & Initial Weight Tracking (`/api/v1/sapi`):**
   - Endpoint CRUD sapi terisolasi multi-tenancy, transaksi atomik pencatatan bobot awal manual ke tabel `pengukuran`, migrasi kolom foto nullable di Neon PostgreSQL, endpoint arsip (`PATCH /archive`), dan penyambungan antarmuka frontend (`CattlePage.jsx` & `CattleDetailPage.jsx`).
 
-- [ ] **Endpoint Tren Pertumbuhan & Analisis Grafik (`GET /api/v1/pengukuran/history/{id_sapi}`):**
-  - Implementasikan endpoint agregasi analitik yang mengembalikan ringkasan statistik (bobot awal masuk, bobot saat ini, total gain, rata-rata ADG keseluruhan, target panen/jual).
-  - Format output dioptimasi untuk konsumsi pustaka visualisasi grafik frontend (Chart.js / Recharts).
+- [x] **Endpoint Tren Pertumbuhan & Analisis Grafik (`GET /api/v1/pengukuran/history/{id_sapi}`):**
+  - Endpoint agregasi analitik yang mengembalikan ringkasan statistik (bobot awal masuk, bobot saat ini, total gain, rata-rata ADG keseluruhan, deteksi weight loss, presigned foto URL).
+  - Format output dioptimasi untuk konsumsi pustaka visualisasi grafik frontend (Recharts).
+
+- [x] **Alur Two-Step Commit & Kompresi WebP (`/pengukuran/predict` & `/pengukuran/save`):**
+  - Pemisahan tahap preview estimasi AI tanpa mutasi DB dan tahap simpan permanen dengan kompresi WebP otomatis ke Neon Object Storage.
+  - Antarmuka frontend `MeasurementPage.jsx` disempurnakan dengan review kartu dua tombol (Ulangi Estimasi vs Simpan Pengukuran).
 
 - [ ] **Data Seeding Lanjutan Multi-Sapi & Histori Pengukuran:**
   - Menambahkan variasi histori pengukuran bertahap (14-30 hari) pada akun peternak demo untuk uji coba visualisasi grafik bobot di dashboard frontend.
