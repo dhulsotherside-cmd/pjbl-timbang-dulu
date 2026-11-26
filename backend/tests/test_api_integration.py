@@ -7,7 +7,7 @@ from app.models.jenis_sapi import JenisSapi
 from app.models.pengukuran import Pengukuran
 from app.models.sapi import Sapi
 from app.models.user import User
-from tests.conftest import client, TestingSessionLocal
+from tests.conftest import client, TestingSessionLocal, make_dummy_image
 from app.services.ai_inference import CattleVisionService
 from app.services import neon_storage
 
@@ -124,37 +124,6 @@ def test_sapi_multi_tenancy_and_crud():
     assert detail1.json()["ear_tag"] == "ST-001"
 
 
-@pytest.fixture
-def photo_prediction(monkeypatch):
-    class StorageTracker:
-        def __init__(self):
-            self.uploaded = {}
-
-        def iterdir(self):
-            return list(self.uploaded.keys())
-
-    tracker = StorageTracker()
-
-    class MockS3Client:
-        def put_object(self, Bucket, Key, Body, ContentType=None):
-            tracker.uploaded[Key] = Body
-            return {"ResponseMetadata": {"HTTPStatusCode": 200}}
-
-        def delete_object(self, Bucket, Key):
-            tracker.uploaded.pop(Key, None)
-            return {"ResponseMetadata": {"HTTPStatusCode": 204}}
-
-    mock_client = MockS3Client()
-
-    async def predict(**kwargs):
-        return 222.75
-
-    monkeypatch.setattr(CattleVisionService, "predict_weight", predict)
-    monkeypatch.setattr(neon_storage, "get_neon_s3_client", lambda: mock_client)
-    monkeypatch.setattr(neon_storage, "validate_storage_config", lambda: None)
-    return tracker
-
-
 def test_pengukuran_prediction_and_pbh(photo_prediction):
     # Setup user & sapi
     client.post("/api/v1/auth/register", json={
@@ -174,27 +143,39 @@ def test_pengukuran_prediction_and_pbh(photo_prediction):
     }, headers=headers)
     id_sapi = sapi_res.json()["id_sapi"]
 
-    # Buat dummy images
-    lateral_bytes = b"fake lateral jpg image content"
-    posterior_bytes = b"fake posterior png image content"
+    # Buat dummy images valid
+    lateral_bytes = make_dummy_image("JPEG")
+    posterior_bytes = make_dummy_image("PNG")
 
     files = {
         "foto_samping": ("lateral.jpg", io.BytesIO(lateral_bytes), "image/jpeg"),
     }
-    data = {"id_sapi": id_sapi}
 
-    # 1. Eksekusi Prediksi Pertama (setelah selang 14 hari dari pendaftaran bobot awal)
-    pred1 = client.post("/api/v1/pengukuran/predict", data=data, files=files, headers=headers)
-    assert pred1.status_code == 201
+    # 1. Tahap 1: Eksekusi Preview Prediksi (tanpa menyimpan ke DB/Storage)
+    pred1 = client.post("/api/v1/pengukuran/predict", files=files, headers=headers)
+    assert pred1.status_code == 200
     pred1_json = pred1.json()
     assert pred1_json["status"] == "success"
-    assert pred1_json["data"]["id_sapi"] == id_sapi
-    assert pred1_json["data"]["bobot_estimasi_kg"] == 222.75
-    assert pred1_json["data"]["foto_samping_url"]
-    assert pred1_json["data"]["foto_belakang_url"] is None
-    # Sapi telah memiliki rekor bobot awal 14 hari lalu, sehingga PBH terhitung
-    assert pred1_json["data"]["pbh_info"] is not None
-    assert pred1_json["data"]["pbh_info"]["selang_hari"] == 14
+    assert pred1_json["data"]["estimated_weight_kg"] == 222.75
+    assert pred1_json["data"]["bobot"] == 222.75
+    # Pastikan belum ada berkas di storage
+    assert len(list(photo_prediction.iterdir())) == 0
+
+    # 2. Tahap 2: Simpan Pengukuran Permanen (setelah selang 14 hari dari bobot awal)
+    files_save = {
+        "foto": ("lateral.jpg", io.BytesIO(lateral_bytes), "image/jpeg"),
+    }
+    save1 = client.post("/api/v1/pengukuran/save", data={"id_sapi": id_sapi, "bobot": 222.75}, files=files_save, headers=headers)
+    assert save1.status_code == 201
+    save1_json = save1.json()
+    assert save1_json["status"] == "success"
+    assert save1_json["data"]["id_sapi"] == id_sapi
+    assert save1_json["data"]["bobot"] == 222.75
+    assert save1_json["data"]["path_foto_samping"].endswith(".webp")
+    assert save1_json["data"]["foto_url"] is not None
+    assert save1_json["data"]["pbh_info"] is not None
+    assert save1_json["data"]["pbh_info"]["selang_hari"] == 14
+    assert len(list(photo_prediction.iterdir())) == 1
 
     # Simulasikan pembaruan tanggal ukur pengukuran terakhir di DB agar saat pengukuran kedua selang hari terhitung
     with TestingSessionLocal() as db:
@@ -203,24 +184,26 @@ def test_pengukuran_prediction_and_pbh(photo_prediction):
         last_m.bobot = 250.00
         db.commit()
 
-    # 2. Eksekusi Prediksi Kedua (setelah ada selang hari historis)
+    # 3. Eksekusi Pengukuran Kedua (Two-step flow: save langsung dengan foto baru)
     files2 = {
-        "foto_belakang": ("posterior2.png", io.BytesIO(posterior_bytes), "image/png"),
+        "foto": ("posterior2.png", io.BytesIO(posterior_bytes), "image/png"),
     }
-    pred2 = client.post("/api/v1/pengukuran/predict", data=data, files=files2, headers=headers)
-    assert pred2.status_code == 201
-    pred2_json = pred2.json()
-    assert pred2_json["data"]["foto_samping_url"] is None
-    assert pred2_json["data"]["foto_belakang_url"]
-    assert pred2_json["data"]["pbh_info"] is not None
-    assert pred2_json["data"]["pbh_info"]["selang_hari"] == 14
-    assert "status" in pred2_json["data"]["pbh_info"]
+    save2 = client.post("/api/v1/pengukuran/save", data={"id_sapi": id_sapi, "bobot": 265.0}, files=files2, headers=headers)
+    assert save2.status_code == 201
+    save2_json = save2.json()
+    assert save2_json["data"]["bobot"] == 265.0
+    assert save2_json["data"]["pbh_info"] is not None
+    assert save2_json["data"]["pbh_info"]["selang_hari"] == 14
+    assert "status" in save2_json["data"]["pbh_info"]
 
-    # 3. Ambil riwayat pengukuran sapi (total 3: bobot awal + pred1 + pred2)
-    riwayat = client.get(f"/api/v1/pengukuran/sapi/{id_sapi}", headers=headers)
-    assert riwayat.status_code == 200
-    riwayat_list = riwayat.json()
-    assert len(riwayat_list) == 3
+    # 4. Ambil riwayat analitik baru via /history/{id_sapi}
+    history_res = client.get(f"/api/v1/pengukuran/history/{id_sapi}", headers=headers)
+    assert history_res.status_code == 200
+    hist_json = history_res.json()
+    assert hist_json["summary"]["bobot_awal"] == 210.0
+    assert hist_json["summary"]["bobot_terkini"] == 265.0
+    assert hist_json["summary"]["total_pertambahan_kg"] == 55.0
+    assert len(hist_json["history"]) == 3
 
 
 def test_new_photo_measurement_is_atomic_and_visible(photo_prediction, monkeypatch):
@@ -229,37 +212,40 @@ def test_new_photo_measurement_is_atomic_and_visible(photo_prediction, monkeypat
     from tests.test_sapi_crud import register_and_login
 
     headers = register_and_login("foto_baru")
-    data = {"ear_tag": "FOTO-1", "id_jenis": 1, "jenis_kelamin": "Betina", "umur_bulan": 18}
-    rear = ("rear.png", b"rear", "image/png")
-    files = {"foto_belakang": rear}
-    url = "/api/v1/pengukuran/predict"
-    for invalid in ({}, {"foto_samping": rear, **files}, {"foto_depan": rear, **files},
-                    [("foto_belakang", rear), ("foto_belakang", rear)]):
-        assert client.post(url, data=data, files=invalid, headers=headers).status_code == 422
+    data = {"ear_tag": "FOTO-1", "id_jenis": 1, "jenis_kelamin": "Betina", "umur_bulan": 18, "bobot": 222.75}
+    rear = ("rear.png", make_dummy_image("PNG"), "image/png")
+    files = {"foto": rear}
+    url_predict = "/api/v1/pengukuran/predict"
+    url_save = "/api/v1/pengukuran/save"
+
+    # Validasi reject non-cattle pada predict
     with monkeypatch.context() as patch:
         async def reject(**kwargs):
-            raise HTTPException(422, "Foto belakang bukan sapi.")
+            raise HTTPException(422, "Foto bukan sapi.")
         patch.setattr(CattleVisionService, "predict_weight", reject)
-        assert client.post(url, data=data, files=files, headers=headers).status_code == 422
-    with monkeypatch.context() as patch:
-        async def fail_rear(photo, *args, **kwargs):
-            raise HTTPException(503, "Foto gagal disimpan.")
-        patch.setattr(pengukuran, "upload_image_to_neon", fail_rear)
-        assert client.post(url, data=data, files=files, headers=headers).status_code == 503
-    assert client.get("/api/v1/sapi/", headers=headers).json() == []
-    assert list(photo_prediction.iterdir()) == []
+        assert client.post(url_predict, files=files, headers=headers).status_code == 422
 
-    response = client.post(url, data=data, files=files, headers=headers)
+    # Validasi failure saat upload S3
+    with monkeypatch.context() as patch:
+        async def fail_upload(*args, **kwargs):
+            raise HTTPException(503, "Foto gagal disimpan.")
+        patch.setattr(pengukuran, "upload_bytes_to_neon", fail_upload)
+        assert client.post(url_save, data=data, files=files, headers=headers).status_code == 503
+
+    assert client.get("/api/v1/sapi/", headers=headers).json() == []
+
+    # Eksekusi save dengan onboarding sapi baru
+    response = client.post(url_save, data=data, files=files, headers=headers)
     assert response.status_code == 201, response.text
     result = response.json()["data"]
     cattle, = client.get("/api/v1/sapi/", headers=headers).json()
     assert cattle["id_sapi"] == result["id_sapi"]
     assert cattle["ear_tag"] == "FOTO-1"
-    assert cattle["bobot_terakhir"] == result["bobot_estimasi_kg"] == 222.75
+    assert cattle["bobot_terakhir"] == result["bobot"] == 222.75
     assert cattle["total_pengukuran"] == 1
-    assert len(list(photo_prediction.iterdir())) == 1
-    assert client.post(url, data=data, files=files, headers=headers).status_code == 400
-    assert len(list(photo_prediction.iterdir())) == 1
+
+    # Mencegah duplikasi ear tag
+    assert client.post(url_save, data=data, files=files, headers=headers).status_code == 400
 
 
 def test_custom_pbh_calculator_endpoint():

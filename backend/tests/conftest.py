@@ -53,3 +53,49 @@ def setup_and_teardown_db():
 
 # Global TestClient instance untuk kompatibilitas import langsung
 client = TestClient(app)
+
+
+def make_dummy_image(fmt: str = "JPEG", size: tuple = (50, 50), color: tuple = (100, 150, 200)) -> bytes:
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", size, color=color).save(buf, format=fmt)
+    return buf.getvalue()
+
+
+@pytest.fixture
+def photo_prediction(monkeypatch):
+    class StorageTracker:
+        def __init__(self):
+            self.uploaded = {}
+
+        def iterdir(self):
+            return list(self.uploaded.keys())
+
+    tracker = StorageTracker()
+
+    class MockS3Client:
+        def put_object(self, Bucket, Key, Body, ContentType=None):
+            tracker.uploaded[Key] = Body
+            return {"ResponseMetadata": {"HTTPStatusCode": 200}}
+
+        def delete_object(self, Bucket, Key):
+            tracker.uploaded.pop(Key, None)
+            return {"ResponseMetadata": {"HTTPStatusCode": 204}}
+
+        def generate_presigned_url(self, ClientMethod, Params, ExpiresIn=3600):
+            return f"https://mock-neon-storage.tech/{Params.get('Bucket')}/{Params.get('Key')}?signature=mock"
+
+    mock_client = MockS3Client()
+
+    async def predict(**kwargs):
+        return 222.75
+
+    from app.services.ai_inference import CattleVisionService
+    from app.services import neon_storage
+
+    monkeypatch.setattr(CattleVisionService, "predict_weight", predict)
+    monkeypatch.setattr(neon_storage, "get_neon_s3_client", lambda: mock_client)
+    monkeypatch.setattr(neon_storage, "validate_storage_config", lambda: None)
+    return tracker
+

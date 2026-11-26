@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Optional
+from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -35,6 +35,35 @@ class PengukuranResponse(BaseModel):
 
 
 # --- Prediction API Responses ---
+class PredictPreviewData(BaseModel):
+    estimated_weight_kg: float = Field(..., description="Estimasi bobot hasil model AI (kg)")
+    bobot: float = Field(..., description="Alias bobot hasil estimasi (kg)")
+    confidence: Optional[str] = Field("Tinggi", description="Tingkat keyakinan model")
+    status: str = Field("VALID", description="Status validasi foto sapi")
+
+
+class PredictPreviewResponse(BaseModel):
+    status: str = "success"
+    message: str = "Estimasi bobot berhasil diproses"
+    data: PredictPreviewData
+
+
+class MeasurementSaveData(BaseModel):
+    id_pengukuran: int
+    id_sapi: int
+    bobot: float
+    tanggal_ukur: date
+    path_foto_samping: Optional[str] = None
+    foto_url: Optional[str] = None
+    pbh_info: Optional[PBHInfo] = None
+
+
+class MeasurementSaveResponse(BaseModel):
+    status: str = "success"
+    message: str = "Data pengukuran berhasil disimpan permanen"
+    data: MeasurementSaveData
+
+
 class PredictResponseData(BaseModel):
     id_pengukuran: int
     id_sapi: int
@@ -49,6 +78,36 @@ class PredictResponse(BaseModel):
     status: str = "success"
     message: str = "Estimasi bobot berhasil diproses"
     data: PredictResponseData
+
+
+# --- History & Analytics Schemas ---
+class CattleHistorySummary(BaseModel):
+    id_sapi: int
+    ear_tag: str
+    bobot_awal: Optional[float] = None
+    bobot_terkini: Optional[float] = None
+    total_pertambahan_kg: Optional[float] = None
+    rata_rata_pbh: Optional[float] = None
+    is_weight_loss: bool = False
+    total_pengukuran: int = 0
+
+
+class CattleHistoryItem(BaseModel):
+    id_pengukuran: int
+    id_sapi: int
+    bobot: float
+    tanggal_ukur: date
+    selisih_hari: Optional[int] = None
+    pbh_kg_hari: Optional[float] = None
+    status: Optional[str] = None
+    path_foto_samping: Optional[str] = None
+    foto_url: Optional[str] = None
+
+
+class CattleHistoryResponse(BaseModel):
+    status: str = "success"
+    summary: CattleHistorySummary
+    history: List[CattleHistoryItem]
 
 
 # --- Standalone PBH Calculator Schemas ---

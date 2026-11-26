@@ -138,6 +138,39 @@ def _store_image_to_s3(data: bytes, object_key: str, content_type: str) -> str:
     return get_public_url(object_key)
 
 
+def _put_bytes_to_s3(data: bytes, object_key: str, content_type: str) -> str:
+    client = get_neon_s3_client()
+    bucket = settings.NEON_STORAGE_BUCKET_NAME
+    client.put_object(
+        Bucket=bucket,
+        Key=object_key,
+        Body=data,
+        ContentType=content_type,
+    )
+    return object_key
+
+
+async def upload_bytes_to_neon(
+    data: bytes,
+    object_key: str,
+    content_type: str = "image/webp"
+) -> str:
+    """
+    Mengunggah raw bytes (misal hasil kompresi WebP) ke Neon Object Storage
+    dan mengembalikan relative object key.
+    """
+    try:
+        return await run_in_threadpool(_put_bytes_to_s3, data, object_key, content_type)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Gagal menyimpan berkas bytes ke Neon Object Storage: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Foto gagal disimpan ke penyimpanan cloud Neon. Silakan coba lagi."
+        ) from exc
+
+
 async def upload_image_to_neon(
     file: UploadFile,
     id_sapi: Optional[int] = None,
