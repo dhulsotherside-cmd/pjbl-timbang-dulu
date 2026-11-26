@@ -59,12 +59,17 @@ function calculateAge(months) {
 
 function CattleDetailPage() {
   const { id } = useParams()
+  return <CattleDetail key={id} id={id} />
+}
+
+function CattleDetail({ id }) {
   const navigate = useNavigate()
 
   const [cow, setCow] = useState(null)
   const [history, setHistory] = useState([])
   const [jenisSapiList, setJenisSapiList] = useState([])
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [isActionLoading, setIsActionLoading] = useState(false)
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
@@ -77,27 +82,23 @@ function CattleDetailPage() {
     ageMonths: '',
   })
 
-  const loadData = async () => {
-    try {
-      setIsLoading(true)
-      const [cattleData, measurementsData, jenisData] = await Promise.all([
-        cattleService.getCattleDetail(id),
-        cattleService.getCattleMeasurements(id),
-        cattleService.getJenisSapi().catch(() => []),
-      ])
+  useEffect(() => {
+    let active = true
+    Promise.all([
+      cattleService.getCattleDetail(id),
+      cattleService.getCattleMeasurements(id),
+      cattleService.getJenisSapi().catch(() => []),
+    ]).then(([cattleData, measurementsData, jenisData]) => {
+      if (!active) return
       setCow(cattleData)
       setHistory(measurementsData)
       setJenisSapiList(jenisData)
-    } catch (err) {
-      console.error('Gagal memuat detail sapi:', err)
-      setCow(null)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    loadData()
+    }).catch((err) => {
+      if (active && err.response?.status !== 404) setLoadError('Gagal memuat profil dan riwayat pengukuran.')
+    }).finally(() => {
+      if (active) setIsLoading(false)
+    })
+    return () => { active = false }
   }, [id])
 
   const latest = history.length > 0 ? history[0] : null
@@ -168,8 +169,9 @@ function CattleDetailPage() {
       <div className={styles.detailPage}>
         <div className={styles.notFound}>
           <Beef size={32} />
-          <h2>Data sapi tidak ditemukan</h2>
-          <p>Sapi dengan ID {id} tidak ditemukan atau bukan milik peternakan Anda.</p>
+          <h2>{loadError || 'Data sapi tidak ditemukan'}</h2>
+          {loadError ? <p>Periksa koneksi lalu buka kembali profil ini.</p> :
+            <p>Sapi dengan ID {id} tidak ditemukan atau bukan milik peternakan Anda.</p>}
           <Link to="/app/sapi">
             <ArrowLeft size={16} /> Kembali ke Daftar Sapi
           </Link>
@@ -300,7 +302,7 @@ function CattleDetailPage() {
               <ChartNoAxesCombined size={18} />
             </div>
           </div>
-          <strong>{history.length || cow.totalMeasurements || 1} kali</strong>
+          <strong>{history.length} kali</strong>
         </article>
       </section>
 

@@ -1,7 +1,6 @@
-import os
 from pathlib import Path
-from typing import List, Union
-from pydantic import AnyHttpUrl, field_validator
+from typing import List
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
@@ -39,8 +38,14 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours
 
-    # AI Model Inference Mock Toggle
-    USE_MOCK_AI: bool = True
+    CATTLE_CLASSIFIER_PATH: Path = Path("../model_prediksi/sapibukan_cifor.keras")
+    CATTLE_SEGMENTATION_PATH: Path = Path("../model_prediksi/best_seg_model.keras")
+    CATTLE_REGRESSION_PATH: Path = Path("../model_prediksi/best_reg_model.keras")
+
+    @field_validator("CATTLE_CLASSIFIER_PATH", "CATTLE_SEGMENTATION_PATH", "CATTLE_REGRESSION_PATH")
+    @classmethod
+    def resolve_model_path(cls, value: Path) -> Path:
+        return (BACKEND_DIR / value).resolve()
 
     model_config = SettingsConfigDict(
         env_file=[str(ENV_PATH), ".env"],
