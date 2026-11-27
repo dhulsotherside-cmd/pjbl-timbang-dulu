@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from typing import List, Optional
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import Date, DateTime, ForeignKey, Index, Integer, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -33,9 +33,16 @@ class Sapi(Base):
         nullable=False
     )
 
-    # Unique constraint per peternak (id_user, ear_tag)
+    # Partial unique index per peternak (id_user, ear_tag) hanya berlaku untuk sapi aktif (tanggal_keluar IS NULL)
     __table_args__ = (
-        UniqueConstraint("id_user", "ear_tag", name="uq_user_ear_tag"),
+        Index(
+            "uq_sapi_active_ear_tag_per_user",
+            "id_user",
+            "ear_tag",
+            unique=True,
+            postgresql_where=text("tanggal_keluar IS NULL"),
+            sqlite_where=text("tanggal_keluar IS NULL"),
+        ),
     )
 
     # Relasi

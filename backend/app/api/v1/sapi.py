@@ -213,13 +213,14 @@ def update_sapi(
             detail=f"Sapi dengan ID {id_sapi} tidak ditemukan atau bukan milik peternakan Anda."
         )
 
-    # Validasi ear_tag jika diubah
+    # Validasi ear_tag jika diubah (hanya tolak jika ada sapi AKTIF lain dengan ear tag sama)
     if sapi_in.ear_tag and sapi_in.ear_tag.strip() != sapi.ear_tag:
         cleaned_tag = sapi_in.ear_tag.strip()
         duplicate = db.query(Sapi).filter(
             Sapi.id_user == current_user.id_user,
             func.lower(Sapi.ear_tag) == cleaned_tag.lower(),
-            Sapi.id_sapi != id_sapi
+            Sapi.id_sapi != id_sapi,
+            Sapi.tanggal_keluar.is_(None)
         ).first()
         if duplicate:
             raise HTTPException(
@@ -245,6 +246,18 @@ def update_sapi(
     if sapi_in.status == "archived" and sapi.tanggal_keluar is None:
         sapi.tanggal_keluar = date.today()
     elif sapi_in.status == "active":
+        # Pastikan tidak ada konflik ear tag aktif lain jika mengaktifkan kembali sapi
+        duplicate = db.query(Sapi).filter(
+            Sapi.id_user == current_user.id_user,
+            func.lower(Sapi.ear_tag) == sapi.ear_tag.lower(),
+            Sapi.id_sapi != id_sapi,
+            Sapi.tanggal_keluar.is_(None)
+        ).first()
+        if duplicate:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Ear tag '{sapi.ear_tag}' sudah digunakan oleh ternak aktif lain."
+            )
         sapi.tanggal_keluar = None
     elif sapi_in.tanggal_keluar is not None:
         sapi.tanggal_keluar = sapi_in.tanggal_keluar

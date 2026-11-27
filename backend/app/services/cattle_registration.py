@@ -36,7 +36,9 @@ def prepare_sapi(db: Session, user_id: int, profile: SapiBase) -> Sapi:
     if not tag:
         raise HTTPException(422, "Ear tag wajib diisi.")
     duplicate = db.query(Sapi.id_sapi).filter(
-        Sapi.id_user == user_id, func.lower(Sapi.ear_tag) == tag.lower()
+        Sapi.id_user == user_id,
+        func.lower(Sapi.ear_tag) == tag.lower(),
+        Sapi.tanggal_keluar.is_(None)
     ).first()
     if duplicate:
         raise HTTPException(400, f"Ear tag '{tag}' sudah terdaftar pada peternakan Anda.")
