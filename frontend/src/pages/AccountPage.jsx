@@ -4,65 +4,80 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../context/useAuth' 
 import { useNavigate } from 'react-router-dom'
-import {
-  loadAccountProfile,
-  saveAccountProfile,
-} from '../mocks/accountData'
+import api from '../services/api'
+import LogoutConfirmModal from '../components/layout/LogoutConfirmModal'
 import styles from './AccountPage.module.css'
 
 export default function AccountPage() {
-  const { user, isLoading, logout } = useAuth()
+  const { user, updateUser, isLoading, logout } = useAuth()
   const navigate = useNavigate()
 
-  const [profile, setProfile] = useState(() => {
-    const cached = loadAccountProfile()
-    if (user) {
-      return { ...cached, ...user }
-    }
-    return cached
-  })
-
+  const [profile, setProfile] = useState(() => user || {})
   const [isEditing, setIsEditing] = useState(false)
   const [showLogoutModal, setShowLogoutModal] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
+  const [successMessage, setSuccessMessage] = useState('')
 
-  // Tutup modal jika tombol Escape ditekan
   useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        setShowLogoutModal(false)
-      }
+    if (user) {
+      setProfile(user)
     }
-    if (showLogoutModal) {
-      window.addEventListener('keydown', handleKeyDown)
-    }
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [showLogoutModal])
+  }, [user])
 
   const handleConfirmLogout = () => {
-    // 1. Bersihkan session auth global dan token di client storage
-    logout()
-    localStorage.removeItem('timbangdulu_token')
     setShowLogoutModal(false)
-
-    // 2. Navigasi kembali ke halaman Login dengan replace: true
-    // agar pengguna tidak dapat menekan tombol 'Back' browser
+    logout()
     navigate('/login', { replace: true })
   }
 
   const handleChange = (event) => {
     const { name, value } = event.target
-
     setProfile((current) => ({
       ...current,
       [name]: value,
     }))
+    setErrorMessage('')
   }
 
-  const handleSave = (event) => {
+  const handleSave = async (event) => {
     event.preventDefault()
-    saveAccountProfile(profile)
-    window.dispatchEvent(new Event('timbangdulu-profile-updated'))
+    setIsSubmitting(true)
+    setErrorMessage('')
+    setSuccessMessage('')
+
+    try {
+      const response = await api.put('/auth/me', {
+        nama_user: profile.nama_user,
+        nama_peternakan: profile.nama_peternakan,
+        alamat: profile.alamat,
+        no_telp: profile.no_telp,
+      })
+
+      updateUser(response.data)
+      setProfile(response.data)
+      setIsEditing(false)
+      setSuccessMessage('Profil berhasil diperbarui.')
+      setTimeout(() => setSuccessMessage(''), 3500)
+    } catch (err) {
+      console.error('Gagal memperbarui profil:', err)
+      const detail = err.response?.data?.detail
+      setErrorMessage(
+        typeof detail === 'string'
+          ? detail
+          : 'Gagal memperbarui data profil akun. Periksa isian form lalu coba lagi.'
+      )
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleCancel = () => {
     setIsEditing(false)
+    setErrorMessage('')
+    if (user) {
+      setProfile(user)
+    }
   }
 
   const formatDate = (date) => {
@@ -119,14 +134,47 @@ export default function AccountPage() {
 
         {!isEditing && (
           <button
+            type="button"
             className={styles.editButton}
-            onClick={() => setIsEditing(true)}
+            onClick={() => {
+              setIsEditing(true)
+              setErrorMessage('')
+              setSuccessMessage('')
+            }}
           >
             <Pencil size={16} />
             Edit Profil
           </button>
         )}
       </div>
+
+      {successMessage && (
+        <div style={{
+          padding: '12px 16px',
+          borderRadius: '10px',
+          background: '#edf7ee',
+          border: '1px solid #c2dec0',
+          color: '#1f592d',
+          fontSize: '13px',
+          fontWeight: 600,
+        }}>
+          {successMessage}
+        </div>
+      )}
+
+      {errorMessage && (
+        <div style={{
+          padding: '12px 16px',
+          borderRadius: '10px',
+          background: '#fdf2f2',
+          border: '1px solid #fecaca',
+          color: '#c93b2b',
+          fontSize: '13px',
+          fontWeight: 600,
+        }}>
+          {errorMessage}
+        </div>
+      )}
 
       <section className={styles.profileSection}>
         <div className={styles.profileIdentity}>
@@ -136,8 +184,8 @@ export default function AccountPage() {
 
           <div>
             <span className={styles.profileLabel}>PENGELOLA PETERNAKAN</span>
-            <h2>{profile.nama_user}</h2>
-            <p>@{profile.username}</p>
+            <h2>{profile.nama_user || 'Pengelola'}</h2>
+            <p>@{profile.username || 'peternak'}</p>
           </div>
         </div>
       </section>
@@ -210,16 +258,14 @@ export default function AccountPage() {
             <button
               type="button"
               className={styles.cancelButton}
-              onClick={() => {
-                setIsEditing(false)
-                setProfile(loadAccountProfile())
-              }}
+              onClick={handleCancel}
+              disabled={isSubmitting}
             >
               Batal
             </button>
 
-            <button type="submit" className={styles.saveButton}>
-              Simpan Perubahan
+            <button type="submit" className={styles.saveButton} disabled={isSubmitting}>
+              {isSubmitting ? 'Menyimpan...' : 'Simpan Perubahan'}
             </button>
           </div>
         )}
@@ -247,43 +293,12 @@ export default function AccountPage() {
         </button>
       </section>
 
-      {/* Modal Dialog Konfirmasi Logout */}
-      {showLogoutModal && (
-        <div
-          className={styles.modalOverlay}
-          onClick={() => setShowLogoutModal(false)}
-        >
-          <div
-            className={styles.modalCard}
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="logout-title"
-          >
-            <div className={styles.modalIconWrap}>
-              <LogOut size={24} />
-            </div>
-            <h3 id="logout-title">Konfirmasi Keluar Akun</h3>
-            <p>Apakah Anda yakin ingin keluar dari akun TimbangDulu?</p>
-            <div className={styles.modalActions}>
-              <button
-                type="button"
-                className={styles.modalCancelButton}
-                onClick={() => setShowLogoutModal(false)}
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                className={styles.modalConfirmButton}
-                onClick={handleConfirmLogout}
-              >
-                Ya, Keluar Akun
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Modal Dialog Konfirmasi Logout Full-Screen via createPortal */}
+      <LogoutConfirmModal
+        isOpen={showLogoutModal}
+        onClose={() => setShowLogoutModal(false)}
+        onConfirm={handleConfirmLogout}
+      />
     </div>
   )
 }

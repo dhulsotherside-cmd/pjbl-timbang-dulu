@@ -1,14 +1,16 @@
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
   Beef,
   ScanLine,
   UserRound,
+  LogOut,
 } from 'lucide-react'
 import styles from './AppLayout.module.css'
 import logo from '../../assets/images/logo-timbangdulu.png'
-import { useState, useEffect } from 'react'
-import { loadAccountProfile } from '../../mocks/accountData'
+import { useState } from 'react'
+import { useAuth } from '../../context/useAuth'
+import LogoutConfirmModal from './LogoutConfirmModal'
 
 const navigation = [
   { label: 'Dashboard', path: '/app', icon: LayoutDashboard, end: true },
@@ -17,23 +19,27 @@ const navigation = [
   { label: 'Akun', path: '/app/akun', icon: UserRound },
 ]
 
+function getInitials(name) {
+  if (!name) return 'TD'
+  const parts = name.trim().split(/\s+/)
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase()
+  }
+  return parts[0].slice(0, 2).toUpperCase()
+}
+
 function AppLayout() {
   const location = useLocation()
-const [profile, setProfile] = useState(() => loadAccountProfile())
+  const navigate = useNavigate()
+  const { user, logout } = useAuth()
+  const [showLogoutModal, setShowLogoutModal] = useState(false)
 
-useEffect(() => {
-  const syncProfile = () => {
-    setProfile(loadAccountProfile())
+  const handleConfirmLogout = () => {
+    setShowLogoutModal(false)
+    logout()
+    navigate('/login', { replace: true })
   }
 
-  window.addEventListener('storage', syncProfile)
-  window.addEventListener('timbangdulu-profile-updated', syncProfile)
-
-  return () => {
-    window.removeEventListener('storage', syncProfile)
-    window.removeEventListener('timbangdulu-profile-updated', syncProfile)
-  }
-}, [])
   const currentPage = navigation.find((item) =>
     item.end
       ? location.pathname === item.path
@@ -51,12 +57,12 @@ useEffect(() => {
     <div className={styles.appShell}>
       <aside className={styles.sidebar}>
         <div className={styles.brand}>
-<img
-  src={logo}
-  alt="TimbangDulu"
-  className={styles.brandLogo}
-/>
-<span>TimbangDulu</span>
+          <img
+            src={logo}
+            alt="TimbangDulu"
+            className={styles.brandLogo}
+          />
+          <span>TimbangDulu</span>
         </div>
 
         <div className={styles.farmLabel}>MENU UTAMA</div>
@@ -79,12 +85,24 @@ useEffect(() => {
 
         <div className={styles.sidebarBottom}>
           <div className={styles.farmInfo}>
-            <div className={styles.farmAvatar}>TD</div>
+            <div className={styles.farmAvatar}>
+              {getInitials(user?.nama_user)}
+            </div>
             <div>
-              <strong>{profile.nama_peternakan}</strong>
-<span>{profile.nama_user}</span>
+              <strong>{user?.nama_peternakan || 'Peternakan'}</strong>
+              <span>{user?.nama_user || 'Pengguna'}</span>
             </div>
           </div>
+
+          <button
+            type="button"
+            className={styles.sidebarLogoutButton}
+            onClick={() => setShowLogoutModal(true)}
+          >
+            <LogOut size={15} />
+            <span>Keluar</span>
+          </button>
+
           <p>Estimasi bobot sapi lebih praktis.</p>
         </div>
       </aside>
@@ -95,14 +113,12 @@ useEffect(() => {
             <span className={styles.topbarEyebrow}>TIMBANGDULU</span>
             <h1>{pageTitle}</h1>
           </div>
-
-          
         </header>
 
-<main className={styles.pageContent}>
-  <div className={styles.organicShape} />
-  <Outlet />
-</main>
+        <main className={styles.pageContent}>
+          <div className={styles.organicShape} />
+          <Outlet />
+        </main>
       </div>
 
       <nav className={styles.mobileNav}>
@@ -120,6 +136,12 @@ useEffect(() => {
           </NavLink>
         ))}
       </nav>
+
+      <LogoutConfirmModal
+        isOpen={showLogoutModal}
+        onClose={() => setShowLogoutModal(false)}
+        onConfirm={handleConfirmLogout}
+      />
     </div>
   )
 }
