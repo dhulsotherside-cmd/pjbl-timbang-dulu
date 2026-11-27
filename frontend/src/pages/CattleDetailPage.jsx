@@ -74,6 +74,18 @@ function CattleDetail({ id }) {
   const [isActionLoading, setIsActionLoading] = useState(false)
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
+  const [lightboxPhoto, setLightboxPhoto] = useState(null)
+
+  useEffect(() => {
+    if (!lightboxPhoto) return
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setLightboxPhoto(null)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [lightboxPhoto])
 
   const [dateA, setDateA] = useState('')
   const [dateB, setDateB] = useState('')
@@ -190,7 +202,7 @@ function CattleDetail({ id }) {
           <h2>{loadError || 'Data sapi tidak ditemukan'}</h2>
           {loadError ? <p>Periksa koneksi lalu buka kembali profil ini.</p> :
             <p>Sapi dengan ID {id} tidak ditemukan atau bukan milik peternakan Anda.</p>}
-          <Link to="/app/sapi">
+          <Link to="/app/sapi" className={styles.backLink}>
             <ArrowLeft size={16} /> Kembali ke Daftar Sapi
           </Link>
         </div>
@@ -516,12 +528,28 @@ function CattleDetail({ id }) {
           {history.map((item, index) => (
             <article className={styles.historyItem} key={item.id}>
               {item.fotoUrl ? (
-                <img
-                  src={item.fotoUrl}
-                  alt={`Foto Sapi #${item.id}`}
-                  className={styles.historyThumb}
-                  loading="lazy"
-                />
+                <button
+                  type="button"
+                  className={styles.historyThumbButton}
+                  onClick={() =>
+                    setLightboxPhoto({
+                      url: item.fotoUrl,
+                      title: `Pengukuran #${history.length - index}`,
+                      date: formatDate(item.date),
+                      weight: `${item.weight} kg`,
+                    })
+                  }
+                  title="Klik untuk melihat foto ukuran penuh"
+                  aria-label="Lihat foto ukuran penuh"
+                >
+                  <img
+                    src={item.fotoUrl}
+                    alt={`Foto Sapi #${item.id}`}
+                    className={styles.historyThumb}
+                    loading="lazy"
+                  />
+                  <span className={styles.thumbOverlay}>🔍</span>
+                </button>
               ) : (
                 <div className={styles.historyIcon}>
                   <Scale size={18} />
@@ -717,6 +745,46 @@ function CattleDetail({ id }) {
                 </button>
               </div>
             </section>
+          </div>,
+          document.body
+        )}
+
+      {/* Lightbox Modal Preview Ukuran Penuh (createPortal ke document.body) */}
+      {lightboxPhoto &&
+        createPortal(
+          <div
+            className={styles.lightboxOverlay}
+            onClick={() => setLightboxPhoto(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Preview Foto Pengukuran Ukuran Penuh"
+          >
+            <div
+              className={styles.lightboxContent}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                className={styles.lightboxClose}
+                onClick={() => setLightboxPhoto(null)}
+                aria-label="Tutup preview foto"
+              >
+                ×
+              </button>
+              <div className={styles.lightboxImageWrapper}>
+                <img
+                  src={lightboxPhoto.url}
+                  alt={lightboxPhoto.title}
+                  className={styles.lightboxImage}
+                />
+              </div>
+              <div className={styles.lightboxCaption}>
+                <strong>{lightboxPhoto.title}</strong>
+                <span>
+                  {lightboxPhoto.date} · Bobot: {lightboxPhoto.weight}
+                </span>
+              </div>
+            </div>
           </div>,
           document.body
         )}

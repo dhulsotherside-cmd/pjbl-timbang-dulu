@@ -231,23 +231,53 @@
   font-size: 13px;
 }
 
+.stepBack {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 9px;
+  border: 1px solid #d8ded0;
+  background: #ffffff;
+  color: #3b5841;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 2px rgba(32, 60, 50, 0.04);
+  transition: all 180ms ease;
+}
+
+.stepBack:hover {
+  background: #f4f7f1;
+  border-color: #aebfab;
+  color: #203c32;
+  transform: translateY(-1px);
+}
+
 .backButton {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 22px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: #647663;
-  font: inherit;
-  font-size: 12px;
+  padding: 9px 16px;
+  border-radius: 9px;
+  border: 1px solid #d8ded0;
+  background: #ffffff;
+  color: #3b5841;
+  font-family: inherit;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  box-shadow: 0 1px 2px rgba(32, 60, 50, 0.04);
+  transition: all 180ms ease;
 }
 
 .backButton:hover {
+  background: #f4f7f1;
+  border-color: #aebfab;
   color: #203c32;
+  transform: translateY(-1px);
 }
 
 .searchBox {
@@ -276,6 +306,90 @@
   color: #292e2a;
   font: inherit;
   font-size: 12px;
+}
+
+.cowList {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.cowCard {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 16px;
+  border: 1.5px solid #dfe4da;
+  border-radius: 13px;
+  background: #ffffff;
+  color: #292e2a;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(32, 60, 50, 0.04);
+  transition: all 180ms ease;
+}
+
+.cowCard:hover {
+  border-color: #92a588;
+  background: #fbfcf9;
+  transform: translateY(-1px);
+}
+
+.cowCard.selected {
+  border-color: #496b50;
+  background: #f0f4ec;
+  box-shadow: 0 0 0 1.5px #496b50, 0 3px 8px rgba(73, 107, 80, 0.12);
+}
+
+.cowCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 10px;
+}
+
+.cowCardHeader strong {
+  font-size: 15px;
+  font-weight: 700;
+  color: #203c32;
+  letter-spacing: -0.3px;
+}
+
+.cowId {
+  padding: 3px 9px;
+  border-radius: 6px;
+  background: #edf2e8;
+  color: #496b50;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: monospace;
+}
+
+.cowCard p {
+  margin: 0;
+  font-size: 12px;
+  color: #6a7468;
+}
+
+.cowWeight {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #2f563d;
+  margin-top: 2px;
+}
+
+.emptySearch {
+  grid-column: 1 / -1;
+  padding: 24px;
+  text-align: center;
+  color: #7c8577;
+  font-size: 13px;
+  background: #f8faf5;
+  border: 1px dashed #dbe1d5;
+  border-radius: 12px;
 }
 
 .cattleList {
@@ -624,6 +738,7 @@
   gap: 16px;
   padding: 18px 20px;
   margin-top: 26px;
+  margin-bottom: 24px;
   background: #f2f0e6;
   border: 1px solid #e2e1d7;
   border-radius: 12px;
@@ -798,6 +913,7 @@
   gap: 16px;
   padding: 18px 20px;
   margin-top: 26px;
+  margin-bottom: 24px;
   background: #f2f0e6;
   border: 1px solid #e2e1d7;
   border-radius: 12px;
