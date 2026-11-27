@@ -14,6 +14,7 @@ from app.schemas.user import (
     UserLoginData,
     UserRegisterData,
     UserResponse,
+    UserUpdate,
 )
 
 router = APIRouter(prefix="/auth", tags=["Autentikasi"])
@@ -168,4 +169,50 @@ def get_current_user_profile(
     """
     Mengambil data profil pengguna yang sedang login berdasarkan token JWT.
     """
+    return current_user
+
+
+@router.put(
+    "/me",
+    response_model=UserResponse,
+    summary="Perbarui Profil Peternak Sedang Login"
+)
+def update_current_user_profile(
+    user_update: UserUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+) -> User:
+    """
+    Memperbarui data profil pengguna yang sedang login pada field:
+    nama_user, nama_peternakan, alamat, dan no_telp.
+    Field username tidak boleh diubah.
+    """
+    if user_update.nama_user is not None:
+        if len(user_update.nama_user.strip()) < 2:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Nama pengguna minimal 2 karakter."
+            )
+        current_user.nama_user = user_update.nama_user.strip()
+
+    if "nama_peternakan" in user_update.model_fields_set:
+        current_user.nama_peternakan = user_update.nama_peternakan.strip() if user_update.nama_peternakan else None
+
+    if "alamat" in user_update.model_fields_set:
+        current_user.alamat = user_update.alamat.strip() if user_update.alamat else None
+
+    if "no_telp" in user_update.model_fields_set:
+        current_user.no_telp = user_update.no_telp.strip() if user_update.no_telp else None
+
+    try:
+        db.add(current_user)
+        db.commit()
+        db.refresh(current_user)
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Gagal memperbarui profil pengguna ke database."
+        )
+
     return current_user

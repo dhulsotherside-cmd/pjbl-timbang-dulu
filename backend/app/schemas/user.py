@@ -43,6 +43,21 @@ class UserLogin(BaseModel):
     password: str = Field(..., examples=["PasswordAman123!"])
 
 
+class UserUpdate(BaseModel):
+    nama_user: Optional[str] = Field(None, min_length=2, max_length=100, examples=["Budi Santoso"])
+    nama_peternakan: Optional[str] = Field(None, max_length=100, examples=["Makmur Farm"])
+    alamat: Optional[str] = Field(None, examples=["Jl. Raya Bogor KM 30"])
+    no_telp: Optional[str] = Field(None, max_length=20, examples=["081234567890"])
+
+    @field_validator("nama_user", "nama_peternakan", "alamat", "no_telp", mode="before")
+    @classmethod
+    def strip_strings(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            stripped = v.strip()
+            return stripped if stripped else None
+        return v
+
+
 # Response Schemas
 class UserResponse(UserBase):
     id_user: int

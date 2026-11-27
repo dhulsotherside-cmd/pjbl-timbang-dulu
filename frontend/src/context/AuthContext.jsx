@@ -3,8 +3,15 @@ import api from '../services/api'
 import { AuthContext } from './auth-context'
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)
   const [token, setToken] = useState(() => localStorage.getItem('timbangdulu_token'))
+  const [user, setUser] = useState(() => {
+    try {
+      const stored = localStorage.getItem('timbangdulu_user')
+      return stored ? JSON.parse(stored) : null
+    } catch {
+      return null
+    }
+  })
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
@@ -22,9 +29,11 @@ export function AuthProvider({ children }) {
         })
 
         setUser(response.data)
+        localStorage.setItem('timbangdulu_user', JSON.stringify(response.data))
       } catch (error) {
         console.error('Gagal memuat profil pengguna:', error)
         localStorage.removeItem('timbangdulu_token')
+        localStorage.removeItem('timbangdulu_user')
         setToken(null)
         setUser(null)
       } finally {
@@ -44,6 +53,7 @@ export function AuthProvider({ children }) {
     const accessToken = response.data.access_token
 
     localStorage.setItem('timbangdulu_token', accessToken)
+    localStorage.setItem('timbangdulu_user', JSON.stringify(response.data.user))
     setToken(accessToken)
     setUser(response.data.user)
 
@@ -52,8 +62,18 @@ export function AuthProvider({ children }) {
 
   const logout = () => {
     localStorage.removeItem('timbangdulu_token')
+    localStorage.removeItem('timbangdulu_user')
     setToken(null)
     setUser(null)
+  }
+
+  const updateUser = (updatedUser) => {
+    setUser(updatedUser)
+    localStorage.setItem('timbangdulu_user', JSON.stringify(updatedUser))
+    try {
+      localStorage.setItem('timbangdulu_account_profile', JSON.stringify(updatedUser))
+    } catch {}
+    window.dispatchEvent(new Event('timbangdulu-profile-updated'))
   }
 
   return (
@@ -65,12 +85,10 @@ export function AuthProvider({ children }) {
         isAuthenticated: Boolean(token && user),
         login,
         logout,
+        updateUser,
       }}
     >
       {children}
     </AuthContext.Provider>
   )
 }
-
-
-
